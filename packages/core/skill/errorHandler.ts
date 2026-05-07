@@ -1,0 +1,321 @@
+import { TaskContext, TaskStep } from './types';
+import { globalToolDiscovery } from './toolDiscovery';
+
+export type ErrorType = 
+  | 'tool_timeout'
+  | 'tool_not_found'
+  | 'validation_error'
+  | 'execution_error'
+  | 'dependency_error'
+  | 'skill_not_found'
+  | 'unknown_error';
+
+export interface ErrorRecovery {
+  action: 'retry' | 'fallback' | 'switch_tool' | 'rollback' | 'request_input' | 'skip' | 'fail';
+  delay?: number;
+  fallbackTool?: { serverId: string; toolId: string };
+  switchToTool?: { serverId: string; toolId: string };
+  stepId?: string;
+  message?: string;
+}
+
+export interface ErrorRecord {
+  timestamp: Date;
+  errorType: ErrorType;
+  message: string;
+  context: TaskContext;
+  stack?: string;
+}
+
+export interface SafeErrorResponse {
+  success: boolean;
+  error: string;
+  code?: string;
+  timestamp: string;
+}
+
+export class ErrorHandler {
+  private errorLog: ErrorRecord[] = [];
+  private maxRetries = 3;
+  private retryDelays = [1000, 2000, 4000];
+  private showDetailedErrors = false;
+
+  setShowDetailedErrors(show: boolean): void {
+    this.showDetailedErrors = show;
+  }
+
+  sanitizeErrorMessage(message: string): string {
+    const patterns = [
+      { regex: /(\/[a-zA-Z0-9_\/.-]+)/g, replacement: '[path]' },
+      { regex: /([a-zA-Z]:\\[a-zA-Z0-9_\\\/.-]+)/g, replacement: '[path]' },
+      { regex: /(\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b)/g, replacement: '[email]' },
+      { regex: /(\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b)/g, replacement: '[ip]' },
+      { regex: /(\b[A-Za-z0-9]{32,}\b)/g, replacement: '[token]' },
+      { regex: /(password|secret|key|token|api[_-]?key)/gi, replacement: '[credential]' }
+    ];
+
+    let sanitized = message;
+    for (const pattern of patterns) {
+      sanitized = sanitized.replace(pattern.regex, pattern.replacement);
+    }
+
+    return sanitized;
+  }
+
+  formatSafeError(error: Error): SafeErrorResponse {
+    const type = this.classifyError(error);
+    
+    return {
+      success: false,
+      error: this.sanitizeErrorMessage(this.showDetailedErrors ? error.message : 'An error occurred'),
+      code: type,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async handle(error: Error, context: TaskContext): Promise<ErrorRecovery> {
+    const errorType = this.classifyError(error);
+    
+    this.logError(error, errorType, context);
+
+    switch (errorType) {
+      case 'tool_timeout':
+        return this.handleTimeout(error, context);
+      case 'tool_not_found':
+        return this.handleToolNotFound(error, context);
+      case 'validation_error':
+        return this.handleValidationError(error, context);
+      case 'dependency_error':
+        return this.handleDependencyError(error, context);
+      case 'skill_not_found':
+        return this.handleSkillNotFound(error, context);
+      case 'execution_error':
+        return this.handleExecutionError(error, context);
+      default:
+        return this.handleUnknownError(error, context);
+    }
+  }
+
+  private classifyError(error: Error): ErrorType {
+    const message = error.message.toLowerCase();
+
+    if (message.includes('timeout')) return 'tool_timeout';
+    if (message.includes('not found') && message.includes('tool')) return 'tool_not_found';
+    if (message.includes('validation') || message.includes('invalid')) return 'validation_error';
+    if (message.includes('dependency') || message.includes('depend')) return 'dependency_error';
+    if (message.includes('skill') && message.includes('not found')) return 'skill_not_found';
+    if (message.includes('execution') || message.includes('failed')) return 'execution_error';
+    
+    return 'unknown_error';
+  }
+
+  private handleTimeout(error: Error, context: TaskContext): ErrorRecovery {
+    const retryCount = (context.results['__retryCount__'] as number) || 0;
+
+    if (retryCount < this.maxRetries) {
+      context.results['__retryCount__'] = retryCount + 1;
+      const delay = this.retryDelays[retryCount] || 4000;
+
+      console.log(`[ErrorHandler] 超时重试 ${retryCount + 1}/${this.maxRetries}，延迟 ${delay}ms`);
+
+      return {
+        action: 'retry',
+        delay,
+        message: `Tool timeout, retry attempt ${retryCount + 1}`
+      };
+    }
+
+    const fallback = this.findFallbackTool(context);
+    if (fallback) {
+      return {
+        action: 'fallback',
+        fallbackTool: fallback,
+        message: 'Timeout exceeded, switching to fallback tool'
+      };
+    }
+
+    return {
+      action: 'request_input',
+      message: '工具执行超时且无备用方案，请提供更多信息'
+    };
+  }
+
+  private handleToolNotFound(error: Error, context: TaskContext): ErrorRecovery {
+    const alternatives = globalToolDiscovery.findToolsByCapability(context.description);
+
+    if (alternatives.length > 0) {
+      const alt = alternatives[0];
+      return {
+        action: 'switch_tool',
+        switchToTool: { serverId: alt.serverId, toolId: alt.toolId },
+        message: `Tool not found, switching to alternative: ${alt.toolId}`
+      };
+    }
+
+    return {
+      action: 'skip',
+      message: `工具不存在且无替代方案，跳过此步骤: ${error.message}`
+    };
+  }
+
+  private handleValidationError(error: Error, context: TaskContext): ErrorRecovery {
+    return {
+      action: 'request_input',
+      message: `参数验证失败，请提供必要信息: ${error.message}`
+    };
+  }
+
+  private handleDependencyError(error: Error, context: TaskContext): ErrorRecovery {
+    return {
+      action: 'rollback',
+      stepId: context.history.length > 0 ? context.history[context.history.length - 1].skillName : undefined,
+      message: `依赖错误，回滚到上一步: ${error.message}`
+    };
+  }
+
+  private handleSkillNotFound(error: Error, context: TaskContext): ErrorRecovery {
+    return {
+      action: 'skip',
+      message: `技能不存在，跳过: ${error.message}`
+    };
+  }
+
+  private handleExecutionError(error: Error, context: TaskContext): ErrorRecovery {
+    const retryCount = (context.results['__retryCount__'] as number) || 0;
+
+    if (retryCount < this.maxRetries) {
+      context.results['__retryCount__'] = retryCount + 1;
+      const delay = this.retryDelays[retryCount] || 4000;
+
+      console.log(`[ErrorHandler] 执行错误重试 ${retryCount + 1}/${this.maxRetries}`);
+
+      return {
+        action: 'retry',
+        delay,
+        message: `Execution error, retry attempt ${retryCount + 1}`
+      };
+    }
+
+    return {
+      action: 'fail',
+      message: `执行失败且已达到最大重试次数: ${error.message}`
+    };
+  }
+
+  private handleUnknownError(error: Error, context: TaskContext): ErrorRecovery {
+    return {
+      action: 'fail',
+      message: `未知错误: ${error.message}`
+    };
+  }
+
+  private findFallbackTool(context: TaskContext): { serverId: string; toolId: string } | null {
+    const alternatives = globalToolDiscovery.getRecommendedTools(context.description, 3);
+
+    if (alternatives.length > 1) {
+      return { serverId: alternatives[1].serverId, toolId: alternatives[1].toolId };
+    }
+
+    return null;
+  }
+
+  private logError(error: Error, type: ErrorType, context: TaskContext): void {
+    const record: ErrorRecord = {
+      timestamp: new Date(),
+      errorType: type,
+      message: error.message,
+      context: {
+        id: context.id,
+        description: context.description,
+        complexity: context.complexity,
+        currentSkill: context.currentSkill,
+        history: context.history.slice(-5),
+        results: {}
+      },
+      stack: error.stack
+    };
+
+    this.errorLog.push(record);
+    console.error(`[ErrorHandler] [${type}] ${error.message}`);
+  }
+
+  async applyRecovery(recovery: ErrorRecovery, context: TaskContext): Promise<boolean> {
+    switch (recovery.action) {
+      case 'retry':
+        if (recovery.delay) {
+          await this.sleep(recovery.delay);
+        }
+        return true;
+
+      case 'fallback':
+        console.log(`[ErrorHandler] 切换到备用工具: ${recovery.fallbackTool}`);
+        return true;
+
+      case 'switch_tool':
+        console.log(`[ErrorHandler] 切换工具: ${recovery.switchToTool}`);
+        return true;
+
+      case 'rollback':
+        console.log(`[ErrorHandler] 回滚到: ${recovery.stepId}`);
+        if (recovery.stepId) {
+          const stepIndex = context.history.findIndex(h => h.skillName === recovery.stepId);
+          if (stepIndex >= 0) {
+            context.history = context.history.slice(0, stepIndex);
+          }
+        }
+        return true;
+
+      case 'skip':
+        console.log(`[ErrorHandler] 跳过步骤`);
+        return true;
+
+      case 'request_input':
+        console.log(`[ErrorHandler] 需要用户输入: ${recovery.message}`);
+        return false;
+
+      case 'fail':
+        console.error(`[ErrorHandler] 任务失败: ${recovery.message}`);
+        return false;
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  getErrorLog(): ErrorRecord[] {
+    return [...this.errorLog];
+  }
+
+  getErrorStats(): {
+    total: number;
+    byType: Record<ErrorType, number>;
+    lastError?: ErrorRecord;
+  } {
+    const byType: Record<ErrorType, number> = {
+      'tool_timeout': 0,
+      'tool_not_found': 0,
+      'validation_error': 0,
+      'execution_error': 0,
+      'dependency_error': 0,
+      'skill_not_found': 0,
+      'unknown_error': 0
+    };
+
+    for (const record of this.errorLog) {
+      byType[record.errorType]++;
+    }
+
+    return {
+      total: this.errorLog.length,
+      byType,
+      lastError: this.errorLog[this.errorLog.length - 1]
+    };
+  }
+
+  clearLog(): void {
+    this.errorLog = [];
+  }
+}
+
+export const globalErrorHandler = new ErrorHandler();

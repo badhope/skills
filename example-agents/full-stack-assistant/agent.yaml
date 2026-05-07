@@ -1,0 +1,141 @@
+version: "1.0.0"
+id: "full-stack-assistant"
+name: "Full Stack Development Assistant"
+description: "A comprehensive full stack development assistant that helps with requirements analysis, architecture design, coding, testing, and deployment following a strict workflow. Enhanced with RAG, Knowledge Graph, and Memory Graph capabilities."
+author: "Folder as Agent Platform"
+tags:
+  - "full-stack"
+  - "development"
+  - "web-app"
+  - "react"
+  - "nodejs"
+  - "typescript"
+  - "rag"
+  - "knowledge-graph"
+  - "memory-graph"
+
+capabilities:
+  - id: "requirements-analysis"
+    name: "Requirements Analysis"
+    description: "Analyze and document user requirements for software projects systematically"
+    keywords:
+      - "requirements"
+      - "analyze"
+      - "document"
+      - "specification"
+      - "gather requirements"
+
+  - id: "architecture-design"
+    name: "Architecture Design"
+    description: "Design software architecture and technical solutions with best practices"
+    keywords:
+      - "architecture"
+      - "design"
+      - "structure"
+      - "technical"
+      - "system design"
+
+  - id: "code-generation"
+    name: "Code Implementation"
+    description: "Generate high quality, maintainable code for web applications"
+    keywords:
+      - "code"
+      - "develop"
+      - "build"
+      - "create"
+      - "implement"
+
+  - id: "testing-quality"
+    name: "Testing & Quality Assurance"
+    description: "Write tests, ensure code quality, and verify implementations"
+    keywords:
+      - "test"
+      - "quality"
+      - "verify"
+      - "check"
+      - "validate"
+
+  - id: "knowledge-retrieval"
+    name: "Knowledge Retrieval"
+    description: "Retrieve relevant information from knowledge base using RAG"
+    keywords:
+      - "search"
+      - "find"
+      - "knowledge"
+      - "lookup"
+      - "information"
+
+  - id: "knowledge-graph"
+    name: "Knowledge Graph"
+    description: "Build and query knowledge graphs for complex relationships"
+    keywords:
+      - "graph"
+      - "relationships"
+      - "entities"
+      - "connections"
+      - "network"
+
+  - id: "memory-management"
+    name: "Memory Management"
+    description: "Manage and retrieve contextual memories"
+    keywords:
+      - "remember"
+      - "recall"
+      - "memory"
+      - "history"
+      - "context"
+
+tools:
+  - id: "filesystem"
+    name: "File System"
+    required: true
+    fallback: "Manual file operations will be required"
+
+  - id: "terminal"
+    name: "Terminal"
+    required: true
+    fallback: "Manual command execution will be required"
+
+  - id: "git"
+    name: "Git"
+    required: false
+    fallback: "Manual version control recommended"
+
+  - id: "rag"
+    name: "RAG System"
+    required: false
+    fallback: "Using basic knowledge lookup"
+
+  - id: "knowledge-graph"
+    name: "Knowledge Graph"
+    required: false
+    fallback: "Using direct relationships"
+
+  - id: "memory"
+    name: "Memory System"
+    required: false
+    fallback: "No contextual memory available"
+
+execution:
+  maxIterations: 50
+  defaultTimeout: 60000
+  enableReflection: true
+  requireConfirmation: false
+
+output:
+  format: "markdown"
+  includeSteps: true
+  includeConfidence: true
+  includeRecommendations: true
+
+knowledge:
+  enabled: true
+  embeddingModel: "text-embedding-3-small"
+  chunkSize: 500
+  similarityThreshold: 0.7
+  topK: 5
+
+memory:
+  enabled: true
+  maxNodes: 1000
+  decayRate: 0.01

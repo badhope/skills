@@ -1,0 +1,304 @@
+# Routing Configuration - Mega-Agent Architecture v3.0
+# 12 Super Agents vs 72 micro-skills - 83% compression
+
+version: "3.0"
+description: "Mega-Agent Architecture - 12 Production-Grade Engines"
+
+defaults:
+  meta_skill: task-planner
+  enable_reflection: true
+  enable_orchestration: true
+  fallback_engine: fullstack-engine
+
+layer_order:
+  - meta
+  - engine
+  - execution
+
+# 12 Production-Grade Engine Routing
+routing_rules:
+  # Meta Layer - Internal Coordination
+  - name: "skill_crafting_task"
+    priority: 200
+    condition:
+      keywords: ["create skill", "make skill", "skill creation", "build agent", "智能体", "技能创建"]
+    route:
+      meta_skill: skill-crafter
+      bypass_orchestration: true
+      
+  - name: "planning_task"
+    priority: 190
+    condition:
+      keywords: ["plan", "roadmap", "decompose", "breakdown", "规划", "分解"]
+    route:
+      meta_skill: task-planner
+      
+  - name: "reflection_task"
+    priority: 180
+    condition:
+      keywords: ["reflect", "post-mortem", "analyze execution", "反思", "复盘"]
+    route:
+      meta_skill: reflector
+      
+  - name: "orchestration_task"
+    priority: 170
+    condition:
+      keywords: ["coordinate", "multi-agent", "orchestrate", "协调", "多智能体"]
+    route:
+      meta_skill: orchestrator
+
+  # Engine 1: Full-Stack Production Engineer
+  - name: "fullstack_general"
+    priority: 100
+    condition:
+      keywords: ["implement", "build", "create", "develop", "app", "application", "开发", "构建", "应用"]
+      complexity_threshold: 4
+    route:
+      engine: fullstack-engine
+      
+  # Engine 2: Bug Hunting Specialist
+  - name: "debugging_task"
+    priority: 160
+    condition:
+      keywords: ["debug", "bug", "error", "issue", "fix", "调试", "错误", "问题", "修复"]
+      or_conditions:
+        - has_stack_trace: true
+        - has_error_trace: true
+    route:
+      engine: bug-hunter
+
+  # Engine 3: Security Auditor General
+  - name: "security_task"
+    priority: 159
+    condition:
+      keywords: ["security", "vulnerability", "audit", "penetration", "hack", "安全", "漏洞", "审计"]
+    route:
+      engine: security-auditor
+      
+  - name: "prompt_injection_task"
+    priority: 158
+    condition:
+      keywords: ["prompt injection", "jailbreak", "injection attack", "注入攻击"]
+    route:
+      engine: security-auditor
+
+  # Engine 4: DevOps Platform Engineer
+  - name: "devops_task"
+    priority: 157
+    condition:
+      keywords: ["docker", "kubernetes", "k8s", "ci/cd", "deploy", "terraform", "cloud", "部署", "云"]
+    route:
+      engine: devops-engineer
+
+  # Engine 5: Code Quality Expert
+  - name: "refactoring_task"
+    priority: 156
+    condition:
+      keywords: ["refactor", "improve code", "clean code", "quality", "重构", "代码质量"]
+    route:
+      engine: code-quality-expert
+      
+  - name: "code_review_task"
+    priority: 155
+    condition:
+      keywords: ["code review", "pr review", "pull request", "代码审查", "评审"]
+    route:
+      engine: code-quality-expert
+
+  # Engine 6: AI Agent Architect
+  - name: "ai_agent_task"
+    priority: 154
+    condition:
+      keywords: ["agent", "llm", "langchain", "rag", "prompt", "embedding", "智能体", "大模型", "提示词"]
+    route:
+      engine: ai-agent-architect
+      
+  - name: "mcp_development"
+    priority: 153
+    condition:
+      keywords: ["mcp", "tool server", "mcp server", "tool development"]
+    route:
+      engine: ai-agent-architect
+
+  # Engine 7: Documentation & Writing Suite
+  - name: "documentation_writing_task"
+    priority: 152
+    condition:
+      keywords: ["document", "documentation", "readme", "doc", "api doc", "文档", "说明"]
+      or_conditions:
+        - file_type: ".md"
+        - file_type: ".rst"
+        - file_type: ".tex"
+    route:
+      engine: documentation-suite
+      
+  - name: "academic_writing_task"
+    priority: 151
+    condition:
+      keywords: ["paper", "thesis", "research", "citation", "bibtex", "论文", "学术", "引用"]
+    route:
+      engine: documentation-suite
+      
+  - name: "technical_design_task"
+    priority: 150
+    condition:
+      keywords: ["adr", "architecture decision", "technical design", "架构设计", "技术方案"]
+    route:
+      engine: documentation-suite
+
+  # Engine 8: Frontend Master
+  - name: "frontend_task"
+    priority: 149
+    condition:
+      keywords: ["react", "vue", "nextjs", "tailwind", "css", "ui", "component", "前端", "组件", "样式"]
+      or_conditions:
+        - file_type: ".tsx"
+        - file_type: ".jsx"
+        - file_type: ".vue"
+        - file_type: ".css"
+    route:
+      engine: frontend-master
+      
+  - name: "ui_design_task"
+    priority: 148
+    condition:
+      keywords: ["ui design", "design system", "figma", "responsive", "accessible"]
+    route:
+      engine: frontend-master
+
+  # Engine 9: Backend Master
+  - name: "backend_task"
+    priority: 147
+    condition:
+      keywords: ["api", "backend", "server", "nodejs", "python", "go", "rust", "graphql", "rest", "后端", "接口"]
+      or_conditions:
+        - file_type: ".go"
+        - file_type: ".rs"
+        - file_type: ".py"
+    route:
+      engine: backend-master
+      
+  - name: "microservices_task"
+    priority: 146
+    condition:
+      keywords: ["microservice", "kafka", "rabbitmq", "grpc", "微服务", "消息队列"]
+    route:
+      engine: backend-master
+      
+  - name: "authentication_task"
+    priority: 145
+    condition:
+      keywords: ["auth", "jwt", "oauth", "rbac", "permission", "认证", "权限"]
+    route:
+      engine: backend-master
+
+  # Engine 10: Database Specialist
+  - name: "database_task"
+    priority: 144
+    condition:
+      keywords: ["database", "sql", "mysql", "postgres", "mongodb", "redis", "migration", "数据库", "迁移"]
+    route:
+      engine: database-specialist
+      
+  - name: "query_optimization_task"
+    priority: 143
+    condition:
+      keywords: ["index", "query optimization", "slow query", "索引", "查询优化"]
+    route:
+      engine: database-specialist
+
+  # Engine 11: Testing Master
+  - name: "testing_task"
+    priority: 142
+    condition:
+      keywords: ["test", "testing", "unit test", "e2e", "integration", "jest", "vitest", "playwright", "测试"]
+    route:
+      engine: testing-master
+      
+  - name: "performance_testing_task"
+    priority: 141
+    condition:
+      keywords: ["load test", "stress test", "benchmark", "k6", "压测", "性能测试"]
+    route:
+      engine: testing-master
+
+# Engine Capability Mapping
+engine_capabilities:
+  fullstack-engine:
+    - frontend
+    - backend
+    - database
+    - devops
+    - git
+    
+  bug-hunter:
+    - debugging
+    - root-cause
+    - error-analysis
+    - reproduction
+    
+  security-auditor:
+    - sast
+    - sca
+    - configuration
+    - penetration
+    
+  devops-engineer:
+    - docker
+    - kubernetes
+    - ci/cd
+    - cloud
+    - monitoring
+    
+  code-quality-expert:
+    - refactoring
+    - design-patterns
+    - linting
+    - code-review
+    
+  ai-agent-architect:
+    - llm
+    - agents
+    - mcp
+    - rag
+    - prompt-engineering
+    
+  documentation-suite:
+    - technical-writing
+    - academic-writing
+    - api-docs
+    - markdown
+    - latex
+    
+  frontend-master:
+    - react
+    - vue
+    - nextjs
+    - tailwind
+    - accessibility
+    - performance
+    
+  backend-master:
+    - nodejs
+    - python
+    - go
+    - rust
+    - apis
+    - microservices
+    - auth
+    
+  database-specialist:
+    - sql
+    - nosql
+    - modeling
+    - optimization
+    - caching
+    - migration
+    
+  testing-master:
+    - unit-test
+    - integration-test
+    - e2e-test
+    - coverage
+    - mutation-testing
+    - performance-testing

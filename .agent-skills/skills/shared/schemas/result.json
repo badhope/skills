@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill.example.com/schemas/result.json",
+  "title": "Result",
+  "description": "Result structure for skill execution output",
+  "type": "object",
+  "required": ["resultId", "taskId", "status"],
+  "properties": {
+    "resultId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this result"
+    },
+    "taskId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the task this result belongs to"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failure", "partial", "pending"],
+      "description": "Execution status"
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["meta", "workflow", "action"],
+      "description": "Layer that produced this result"
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["code", "text", "data", "plan", "report", "artifacts"]
+        },
+        "content": {
+          "type": ["string", "object", "array"],
+          "description": "The actual output content"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["file", "code", "test", "documentation", "config"]
+              },
+              "path": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "language": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence level of the result (0-1)"
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "overallScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "dimensions": {
+          "type": "object",
+          "properties": {
+            "correctness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "completeness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "efficiency": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "robustness": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "maintainability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "security": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            }
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["error", "warning", "info", "suggestion"]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "column": {
+                "type": "integer"
+              }
+            }
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          }
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["improvement", "alternative", "next_step", "best_practice"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "executionTime": {
+          "type": "string",
+          "description": "Execution time in human-readable format"
+        },
+        "executionTimeMs": {
+          "type": "integer",
+          "description": "Execution time in milliseconds"
+        },
+        "tokensUsed": {
+          "type": "integer"
+        },
+        "toolCalls": {
+          "type": "integer"
+        },
+        "linesOfCode": {
+          "type": "integer"
+        },
+        "testCoverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

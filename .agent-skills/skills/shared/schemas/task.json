@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill.example.com/schemas/task.json",
+  "title": "Task",
+  "description": "Task structure for Hierarchical Collaborative Skill Architecture",
+  "type": "object",
+  "required": ["taskId", "type", "layer", "input"],
+  "properties": {
+    "taskId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the task"
+    },
+    "parentId": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Parent task ID if this is a subtask"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["coding", "debugging", "analysis", "writing", "research", "refactoring", "testing", "documentation"],
+      "description": "Type of task"
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["meta", "workflow", "action"],
+      "description": "Layer in the skill hierarchy"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["planner", "orchestrator", "reflector", "coordinator", "executor"],
+      "description": "Role of the skill handling this task"
+    },
+    "complexity": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Complexity score from 1-10"
+        },
+        "factors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["multi-step", "cross-file", "external-api", "domain-expertise", "long-running", "security-critical", "concurrent"]
+          },
+          "description": "Factors contributing to complexity"
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "User's original request"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Additional context for the task"
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["technical", "time", "quality", "resource", "security"]
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "decomposition": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["sequential", "parallel", "hybrid"],
+          "description": "Execution strategy for subtasks"
+        },
+        "subtasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/properties/subtask"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": ["initialized", "planning", "decomposed", "scheduling", "executing", "aggregating", "reflecting", "completed", "retry", "partial_failure", "degraded_completion", "failed"],
+      "default": "initialized"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "result.json"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "startTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tokensUsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actionsCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "subtask": {
+      "type": "object",
+      "required": ["id", "skill"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "skill": {
+          "type": "string",
+          "description": "Name of the skill to invoke"
+        },
+        "description": {
+          "type": "string"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "parallel": {
+          "type": "boolean",
+          "default": false
+        },
+        "estimatedTime": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

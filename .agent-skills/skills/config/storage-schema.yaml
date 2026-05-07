@@ -1,0 +1,790 @@
+# Persistent Storage Schema
+# Version 2.0 - Enhanced with Learning and Dispatcher layers
+
+version: "2.0"
+description: "Database schema for HCSA persistent storage"
+
+# SQLite Database Files
+databases:
+  tasks:
+    path: "data/tasks.db"
+    description: "Task registry and execution history"
+    
+  knowledge:
+    path: "data/knowledge.db"
+    description: "Knowledge base and learning records"
+    
+  metrics:
+    path: "data/metrics.db"
+    description: "Performance metrics and analytics"
+
+# Task Registry Schema
+tasks_schema:
+  tables:
+    tasks:
+      columns:
+        - name: task_id
+          type: TEXT
+          primary_key: true
+          
+        - name: parent_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: name
+          type: TEXT
+          not_null: true
+          
+        - name: description
+          type: TEXT
+          
+        - name: status
+          type: TEXT
+          not_null: true
+          enum: [pending, queued, running, completed, failed, cancelled, retrying]
+          
+        - name: priority
+          type: INTEGER
+          not_null: true
+          range: [0, 3]
+          
+        - name: complexity
+          type: INTEGER
+          range: [1, 10]
+          
+        - name: dependencies
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: dependents
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: assigned_agent
+          type: TEXT
+          
+        - name: assigned_model
+          type: TEXT
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+        - name: started_at
+          type: TEXT
+          format: ISO8601
+          
+        - name: completed_at
+          type: TEXT
+          format: ISO8601
+          
+        - name: estimated_duration
+          type: REAL
+          unit: minutes
+          
+        - name: actual_duration
+          type: REAL
+          unit: minutes
+          
+        - name: estimated_tokens
+          type: INTEGER
+          
+        - name: actual_tokens
+          type: INTEGER
+          
+        - name: result
+          type: TEXT
+          format: JSON
+          
+        - name: error
+          type: TEXT
+          
+        - name: retry_count
+          type: INTEGER
+          default: 0
+          
+        - name: max_retries
+          type: INTEGER
+          default: 3
+          
+        - name: metadata
+          type: TEXT
+          format: JSON
+          
+      indexes:
+        - columns: [status]
+          name: idx_status
+          
+        - columns: [parent_id]
+          name: idx_parent
+          
+        - columns: [created_at]
+          name: idx_created
+          
+        - columns: [assigned_agent]
+          name: idx_agent
+          
+    task_history:
+      columns:
+        - name: history_id
+          type: INTEGER
+          primary_key: true
+          auto_increment: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: old_status
+          type: TEXT
+          
+        - name: new_status
+          type: TEXT
+          not_null: true
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+        - name: details
+          type: TEXT
+          format: JSON
+          
+      indexes:
+        - columns: [task_id]
+          name: idx_history_task
+
+# Knowledge Base Schema
+knowledge_schema:
+  tables:
+    knowledge_items:
+      columns:
+        - name: item_id
+          type: TEXT
+          primary_key: true
+          
+        - name: type
+          type: TEXT
+          not_null: true
+          enum: [fact, pattern, procedure, insight, error_solution, best_practice]
+          
+        - name: category
+          type: TEXT
+          not_null: true
+          
+        - name: title
+          type: TEXT
+          not_null: true
+          
+        - name: content
+          type: TEXT
+          not_null: true
+          
+        - name: summary
+          type: TEXT
+          
+        - name: keywords
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: tags
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: source
+          type: TEXT
+          enum: [learning, manual, imported, reflection]
+          
+        - name: confidence
+          type: REAL
+          range: [0.0, 1.0]
+          default: 0.5
+          
+        - name: usage_count
+          type: INTEGER
+          default: 0
+          
+        - name: success_rate
+          type: REAL
+          range: [0.0, 1.0]
+          default: 0.5
+          
+        - name: status
+          type: TEXT
+          enum: [draft, verified, deprecated, archived]
+          default: draft
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+        - name: updated_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+        - name: last_used
+          type: TEXT
+          format: ISO8601
+          
+        - name: expires_at
+          type: TEXT
+          format: ISO8601
+          
+        - name: metadata
+          type: TEXT
+          format: JSON
+          
+        - name: embedding
+          type: BLOB
+          format: JSON_ARRAY_FLOAT
+          
+      indexes:
+        - columns: [category]
+          name: idx_category
+          
+        - columns: [type]
+          name: idx_type
+          
+        - columns: [status]
+          name: idx_status
+          
+        - columns: [confidence]
+          name: idx_confidence
+          
+    knowledge_fts:
+      type: virtual
+      engine: fts5
+      columns:
+        - name: title
+          type: TEXT
+          
+        - name: content
+          type: TEXT
+          
+        - name: summary
+          type: TEXT
+          
+        - name: keywords
+          type: TEXT
+          
+        - name: tags
+          type: TEXT
+          
+    knowledge_relations:
+      columns:
+        - name: relation_id
+          type: TEXT
+          primary_key: true
+          
+        - name: source_id
+          type: TEXT
+          foreign_key: knowledge_items.item_id
+          
+        - name: target_id
+          type: TEXT
+          foreign_key: knowledge_items.item_id
+          
+        - name: relation_type
+          type: TEXT
+          not_null: true
+          enum: [related_to, depends_on, extends, contradicts, similar_to]
+          
+        - name: strength
+          type: REAL
+          range: [0.0, 1.0]
+          default: 1.0
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+      indexes:
+        - columns: [source_id]
+          name: idx_source
+          
+        - columns: [target_id]
+          name: idx_target
+
+# Learning Records Schema
+learning_schema:
+  tables:
+    learning_records:
+      columns:
+        - name: record_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_type
+          type: TEXT
+          not_null: true
+          
+        - name: strategy_used
+          type: TEXT
+          
+        - name: execution_time
+          type: REAL
+          unit: seconds
+          
+        - name: token_usage
+          type: INTEGER
+          
+        - name: result_quality
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: feedback_type
+          type: TEXT
+          enum: [success, partial, failure, user_rating, self_evaluation]
+          
+        - name: feedback_score
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: lessons_learned
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+      indexes:
+        - columns: [task_type]
+          name: idx_task_type
+          
+        - columns: [timestamp]
+          name: idx_timestamp
+          
+    strategy_patterns:
+      columns:
+        - name: pattern_id
+          type: TEXT
+          primary_key: true
+          
+        - name: name
+          type: TEXT
+          not_null: true
+          
+        - name: description
+          type: TEXT
+          
+        - name: conditions
+          type: TEXT
+          format: JSON
+          
+        - name: actions
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: success_rate
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: sample_count
+          type: INTEGER
+          
+        - name: last_updated
+          type: TEXT
+          format: ISO8601
+          
+    feedbacks:
+      columns:
+        - name: feedback_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: feedback_type
+          type: TEXT
+          not_null: true
+          
+        - name: score
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: details
+          type: TEXT
+          format: JSON
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+    reflection_reports:
+      columns:
+        - name: report_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: overall_score
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: issues_found
+          type: INTEGER
+          
+        - name: insights_generated
+          type: INTEGER
+          
+        - name: improvement_priority
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+
+# Metrics Schema
+metrics_schema:
+  tables:
+    routing_decisions:
+      columns:
+        - name: decision_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: model_selected
+          type: TEXT
+          
+        - name: complexity_level
+          type: TEXT
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+          
+        - name: estimated_tokens
+          type: INTEGER
+          
+        - name: actual_tokens
+          type: INTEGER
+          
+        - name: estimated_cost
+          type: REAL
+          
+        - name: actual_cost
+          type: REAL
+          
+        - name: routing_time_ms
+          type: INTEGER
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+    cost_records:
+      columns:
+        - name: record_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: model
+          type: TEXT
+          
+        - name: estimated_tokens
+          type: INTEGER
+          
+        - name: actual_tokens
+          type: INTEGER
+          
+        - name: estimated_cost
+          type: REAL
+          
+        - name: actual_cost
+          type: REAL
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+    performance_metrics:
+      columns:
+        - name: metric_id
+          type: TEXT
+          primary_key: true
+          
+        - name: metric_type
+          type: TEXT
+          not_null: true
+          
+        - name: skill_name
+          type: TEXT
+          
+        - name: value
+          type: REAL
+          
+        - name: unit
+          type: TEXT
+          
+        - name: timestamp
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+      indexes:
+        - columns: [metric_type, timestamp]
+          name: idx_metric_type_time
+
+# Decomposition Plans Schema
+decomposition_schema:
+  tables:
+    decomposition_plans:
+      columns:
+        - name: plan_id
+          type: TEXT
+          primary_key: true
+          
+        - name: task_id
+          type: TEXT
+          foreign_key: tasks.task_id
+          
+        - name: strategy
+          type: TEXT
+          enum: [sequential, parallel, hybrid, conditional]
+          
+        - name: total_complexity
+          type: INTEGER
+          
+        - name: estimated_duration
+          type: REAL
+          unit: minutes
+          
+        - name: critical_path
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: execution_order
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+          
+    subtasks:
+      columns:
+        - name: subtask_id
+          type: TEXT
+          primary_key: true
+          
+        - name: plan_id
+          type: TEXT
+          foreign_key: decomposition_plans.plan_id
+          
+        - name: name
+          type: TEXT
+          not_null: true
+          
+        - name: description
+          type: TEXT
+          
+        - name: complexity
+          type: INTEGER
+          
+        - name: estimated_time
+          type: REAL
+          unit: minutes
+          
+        - name: estimated_tokens
+          type: INTEGER
+          
+        - name: dependencies
+          type: TEXT
+          format: JSON_ARRAY
+          
+        - name: assigned_agent
+          type: TEXT
+          
+        - name: status
+          type: TEXT
+          enum: [pending, running, completed, failed]
+          
+      indexes:
+        - columns: [plan_id]
+          name: idx_plan
+
+# Aggregation Results Schema
+aggregation_schema:
+  tables:
+    aggregation_results:
+      columns:
+        - name: result_id
+          type: TEXT
+          primary_key: true
+          
+        - name: source_count
+          type: INTEGER
+          
+        - name: conflicts_detected
+          type: INTEGER
+          
+        - name: conflicts_resolved
+          type: INTEGER
+          
+        - name: consistency_score
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: quality_score
+          type: REAL
+          range: [0.0, 1.0]
+          
+        - name: aggregation_time_ms
+          type: INTEGER
+          
+        - name: content
+          type: TEXT
+          format: JSON
+          
+        - name: metadata
+          type: TEXT
+          format: JSON
+          
+        - name: created_at
+          type: TEXT
+          format: ISO8601
+          not_null: true
+
+# Initialization SQL
+init_sql:
+  tasks: |
+    CREATE TABLE IF NOT EXISTS tasks (
+      task_id TEXT PRIMARY KEY,
+      parent_id TEXT,
+      name TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL,
+      priority INTEGER NOT NULL,
+      complexity INTEGER,
+      dependencies TEXT,
+      dependents TEXT,
+      assigned_agent TEXT,
+      assigned_model TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      estimated_duration REAL,
+      actual_duration REAL,
+      estimated_tokens INTEGER,
+      actual_tokens INTEGER,
+      result TEXT,
+      error TEXT,
+      retry_count INTEGER DEFAULT 0,
+      max_retries INTEGER DEFAULT 3,
+      metadata TEXT,
+      FOREIGN KEY (parent_id) REFERENCES tasks(task_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_status ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_parent ON tasks(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_created ON tasks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent ON tasks(assigned_agent);
+    
+    CREATE TABLE IF NOT EXISTS task_history (
+      history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      old_status TEXT,
+      new_status TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      details TEXT,
+      FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id);
+    
+  knowledge: |
+    CREATE TABLE IF NOT EXISTS knowledge_items (
+      item_id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      summary TEXT,
+      keywords TEXT,
+      tags TEXT,
+      source TEXT,
+      confidence REAL DEFAULT 0.5,
+      usage_count INTEGER DEFAULT 0,
+      success_rate REAL DEFAULT 0.5,
+      status TEXT DEFAULT 'draft',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_used TEXT,
+      expires_at TEXT,
+      metadata TEXT,
+      embedding BLOB
+    );
+    
+    CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts 
+    USING fts5(title, content, summary, keywords, tags);
+    
+    CREATE TABLE IF NOT EXISTS knowledge_relations (
+      relation_id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      relation_type TEXT NOT NULL,
+      strength REAL DEFAULT 1.0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (source_id) REFERENCES knowledge_items(item_id),
+      FOREIGN KEY (target_id) REFERENCES knowledge_items(item_id)
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_category ON knowledge_items(category);
+    CREATE INDEX IF NOT EXISTS idx_type ON knowledge_items(type);
+    CREATE INDEX IF NOT EXISTS idx_status ON knowledge_items(status);
+    CREATE INDEX IF NOT EXISTS idx_confidence ON knowledge_items(confidence);
+    CREATE INDEX IF NOT EXISTS idx_source ON knowledge_relations(source_id);
+    CREATE INDEX IF NOT EXISTS idx_target ON knowledge_relations(target_id);
+
+# Data Retention Policy
+retention:
+  tasks:
+    completed: 90  # days
+    failed: 30
+    pending: 7
+    
+  knowledge:
+    verified: 365
+    draft: 30
+    deprecated: 7
+    
+  metrics:
+    routing_decisions: 90
+    cost_records: 180
+    performance_metrics: 30
+    
+  learning:
+    learning_records: 180
+    feedbacks: 90
+    reflection_reports: 90
+
+# Backup Configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention_days: 30
+  compress: true
+  location: "backups/"

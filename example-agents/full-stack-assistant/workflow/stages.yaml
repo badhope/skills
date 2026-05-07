@@ -1,0 +1,647 @@
+version: "1.0.0"
+workflows:
+  - id: "full-project-workflow"
+    name: "Complete Project Setup Workflow"
+    description: "End-to-end workflow for creating a new software project from requirements to deployment"
+    stages:
+      - id: "project-analysis"
+        name: "Project Requirements Analysis"
+        description: "Analyze project requirements, goals, and constraints"
+        required: true
+        timeout: 30000
+        skill: "task-planner"
+        outputs:
+          - "requirements-document.md"
+
+      - id: "tech-selection"
+        name: "Technology Stack Selection"
+        description: "Choose appropriate technologies based on requirements"
+        required: true
+        timeout: 20000
+        skill: "task-planner"
+        outputs:
+          - "tech-stack-document.md"
+
+      - id: "project-structure"
+        name: "Project Structure Setup"
+        description: "Create directory structure and initialize project"
+        required: true
+        timeout: 45000
+        skill: "fullstack-engine"
+        outputs:
+          - "project-structure.txt"
+
+      - id: "dependency-install"
+        name: "Dependency Installation"
+        description: "Install project dependencies and configure tooling"
+        required: true
+        timeout: 60000
+        skill: "fullstack-engine"
+        outputs:
+          - "installation-log.md"
+
+      - id: "core-implementation"
+        name: "Core Implementation"
+        description: "Implement core features and components"
+        required: true
+        timeout: 120000
+        skill: "fullstack-engine"
+        outputs:
+          - "implementation-summary.md"
+
+      - id: "testing"
+        name: "Testing Implementation"
+        description: "Write and run tests for all components"
+        required: true
+        timeout: 60000
+        skill: "testing-master"
+        outputs:
+          - "test-report.md"
+
+      - id: "build-verification"
+        name: "Build Verification"
+        description: "Verify project builds successfully"
+        required: true
+        timeout: 30000
+        skill: "fullstack-engine"
+        outputs:
+          - "build-log.md"
+
+      - id: "deployment-prep"
+        name: "Deployment Preparation"
+        description: "Prepare deployment artifacts and documentation"
+        required: true
+        timeout: 30000
+        skill: "devops-engineer"
+        outputs:
+          - "deployment-guide.md"
+
+  - id: "feature-workflow"
+    name: "Feature Implementation Workflow"
+    description: "Workflow for implementing a specific feature"
+    stages:
+      - id: "feature-analysis"
+        name: "Feature Analysis"
+        description: "Analyze feature requirements and scope"
+        required: true
+        timeout: 30000
+        skill: "task-planner"
+        outputs:
+          - "feature-specification.md"
+
+      - id: "feature-design"
+        name: "Feature Design"
+        description: "Design implementation approach and architecture"
+        required: true
+        timeout: 30000
+        skill: "task-planner"
+        outputs:
+          - "feature-design.md"
+
+      - id: "feature-implementation"
+        name: "Feature Implementation"
+        description: "Implement the feature with proper code quality"
+        required: true
+        timeout: 90000
+        skill: "fullstack-engine"
+        outputs:
+          - "feature-code-summary.md"
+
+      - id: "feature-testing"
+        name: "Feature Testing"
+        description: "Write tests and verify feature functionality"
+        required: true
+        timeout: 45000
+        skill: "testing-master"
+        outputs:
+          - "feature-test-report.md"
+
+      - id: "feature-integration"
+        name: "Feature Integration"
+        description: "Integrate feature into existing codebase"
+        required: true
+        timeout: 30000
+        skill: "fullstack-engine"
+        outputs:
+          - "integration-summary.md"
+
+  - id: "bug-fix-workflow"
+    name: "Bug Fixing Workflow"
+    description: "Workflow for identifying and fixing bugs"
+    stages:
+      - id: "bug-analysis"
+        name: "Bug Analysis"
+        description: "Analyze bug report and reproduce issue"
+        required: true
+        timeout: 30000
+        skill: "bug-hunter"
+        outputs:
+          - "bug-analysis-report.md"
+
+      - id: "root-cause"
+        name: "Root Cause Identification"
+        description: "Identify root cause of the bug"
+        required: true
+        timeout: 30000
+        skill: "bug-hunter"
+        outputs:
+          - "root-cause-analysis.md"
+
+      - id: "fix-implementation"
+        name: "Fix Implementation"
+        description: "Implement the fix for the identified bug"
+        required: true
+        timeout: 45000
+        skill: "bug-hunter"
+        outputs:
+          - "fix-summary.md"
+
+      - id: "fix-verification"
+        name: "Fix Verification"
+        description: "Verify fix works correctly"
+        required: true
+        timeout: 30000
+        skill: "testing-master"
+        outputs:
+          - "verification-report.md"
+
+      - id: "regression-test"
+        name: "Regression Testing"
+        description: "Run tests to ensure no regressions"
+        required: true
+        timeout: 45000
+        skill: "testing-master"
+        outputs:
+          - "regression-test-report.md"
+
+  - id: "review-workflow"
+    name: "Code Review Workflow"
+    description: "Workflow for comprehensive code review"
+    stages:
+      - id: "initial-review"
+        name: "Initial Code Review"
+        description: "Review code for quality and best practices"
+        required: true
+        timeout: 45000
+        skill: "code-quality-expert"
+        outputs:
+          - "code-review-initial.md"
+
+      - id: "security-review"
+        name: "Security Review"
+        description: "Check for security vulnerabilities"
+        required: true
+        timeout: 30000
+        skill: "security-auditor"
+        outputs:
+          - "security-audit-report.md"
+
+      - id: "performance-review"
+        name: "Performance Review"
+        description: "Assess code performance characteristics"
+        required: false
+        timeout: 30000
+        skill: "fullstack-engine"
+        outputs:
+          - "performance-analysis.md"
+
+      - id: "final-report"
+        name: "Final Review Report"
+        description: "Compile final review report with recommendations"
+        required: true
+        timeout: 30000
+        skill: "code-quality-expert"
+        outputs:
+          - "final-review-report.md"
+
+  - id: "design-workflow"
+    name: "Technical Design Workflow"
+    description: "Workflow for creating technical design documents"
+    stages:
+      - id: "requirements-gathering"
+        name: "Requirements Gathering"
+        description: "Collect and document requirements"
+        required: true
+        timeout: 45000
+        skill: "task-planner"
+        outputs:
+          - "requirements-document.md"
+
+      - id: "architecture-design"
+        name: "Architecture Design"
+        description: "Create high-level architecture design"
+        required: true
+        timeout: 60000
+        skill: "fullstack-engine"
+        outputs:
+          - "architecture-document.md"
+
+      - id: "detailed-design"
+        name: "Detailed Design"
+        description: "Create detailed component design"
+        required: true
+        timeout: 60000
+        skill: "fullstack-engine"
+        outputs:
+          - "detailed-design.md"
+
+      - id: "design-validation"
+        name: "Design Validation"
+        description: "Validate design against requirements"
+        required: true
+        timeout: 30000
+        skill: "task-planner"
+        outputs:
+          - "design-validation-report.md"
+
+  - id: "deployment-workflow"
+    name: "Deployment Workflow"
+    description: "Workflow for deploying applications"
+    stages:
+      - id: "deployment-prep"
+        name: "Deployment Preparation"
+        description: "Prepare deployment configuration and artifacts"
+        required: true
+        timeout: 30000
+        skill: "devops-engineer"
+        outputs:
+          - "deployment-config.md"
+
+      - id: "container-build"
+        name: "Container Build"
+        description: "Build Docker images"
+        required: true
+        timeout: 60000
+        skill: "devops-engineer"
+        outputs:
+          - "docker-build-log.md"
+
+      - id: "deployment-execute"
+        name: "Deployment Execution"
+        description: "Execute deployment to target environment"
+        required: true
+        timeout: 60000
+        skill: "devops-engineer"
+        outputs:
+          - "deployment-log.md"
+
+      - id: "deployment-verify"
+        name: "Deployment Verification"
+        description: "Verify deployment success"
+        required: true
+        timeout: 30000
+        skill: "devops-engineer"
+        outputs:
+          - "verification-report.md"
+
+  - id: "security-workflow"
+    name: "Security Audit Workflow"
+    description: "Workflow for security auditing"
+    stages:
+      - id: "scope-definition"
+        name: "Scope Definition"
+        description: "Define audit scope and targets"
+        required: true
+        timeout: 30000
+        skill: "security-auditor"
+        outputs:
+          - "audit-scope.md"
+
+      - id: "vulnerability-scan"
+        name: "Vulnerability Scanning"
+        description: "Scan for vulnerabilities"
+        required: true
+        timeout: 60000
+        skill: "security-auditor"
+        outputs:
+          - "vulnerability-report.md"
+
+      - id: "code-security-review"
+        name: "Code Security Review"
+        description: "Review code for security issues"
+        required: true
+        timeout: 60000
+        skill: "security-auditor"
+        outputs:
+          - "security-issues.md"
+
+      - id: "security-report"
+        name: "Security Report"
+        description: "Compile security audit report"
+        required: true
+        timeout: 30000
+        skill: "security-auditor"
+        outputs:
+          - "security-audit-report.md"
+
+  - id: "testing-workflow"
+    name: "Testing Workflow"
+    description: "Workflow for testing tasks"
+    stages:
+      - id: "test-planning"
+        name: "Test Planning"
+        description: "Plan testing approach and cases"
+        required: true
+        timeout: 30000
+        skill: "testing-master"
+        outputs:
+          - "test-plan.md"
+
+      - id: "test-implementation"
+        name: "Test Implementation"
+        description: "Write test cases"
+        required: true
+        timeout: 60000
+        skill: "testing-master"
+        outputs:
+          - "test-code.md"
+
+      - id: "test-execution"
+        name: "Test Execution"
+        description: "Run tests and collect results"
+        required: true
+        timeout: 60000
+        skill: "testing-master"
+        outputs:
+          - "test-results.md"
+
+      - id: "test-report"
+        name: "Test Report"
+        description: "Generate test report"
+        required: true
+        timeout: 30000
+        skill: "testing-master"
+        outputs:
+          - "test-report.md"
+
+  - id: "refactor-workflow"
+    name: "Refactoring Workflow"
+    description: "Workflow for code refactoring"
+    stages:
+      - id: "code-analysis"
+        name: "Code Analysis"
+        description: "Analyze code for refactoring opportunities"
+        required: true
+        timeout: 30000
+        skill: "code-quality-expert"
+        outputs:
+          - "refactor-analysis.md"
+
+      - id: "refactor-planning"
+        name: "Refactoring Planning"
+        description: "Plan refactoring approach"
+        required: true
+        timeout: 30000
+        skill: "code-quality-expert"
+        outputs:
+          - "refactor-plan.md"
+
+      - id: "refactor-execution"
+        name: "Refactoring Execution"
+        description: "Execute refactoring changes"
+        required: true
+        timeout: 90000
+        skill: "code-quality-expert"
+        outputs:
+          - "refactor-changes.md"
+
+      - id: "refactor-verification"
+        name: "Refactoring Verification"
+        description: "Verify refactoring maintains functionality"
+        required: true
+        timeout: 30000
+        skill: "testing-master"
+        outputs:
+          - "verification-report.md"
+
+  - id: "documentation-workflow"
+    name: "Documentation Workflow"
+    description: "Workflow for generating documentation"
+    stages:
+      - id: "doc-planning"
+        name: "Documentation Planning"
+        description: "Plan documentation structure"
+        required: true
+        timeout: 20000
+        skill: "documentation-suite"
+        outputs:
+          - "doc-structure.md"
+
+      - id: "doc-generation"
+        name: "Documentation Generation"
+        description: "Generate documentation content"
+        required: true
+        timeout: 60000
+        skill: "documentation-suite"
+        outputs:
+          - "documentation-files.md"
+
+      - id: "doc-review"
+        name: "Documentation Review"
+        description: "Review documentation quality"
+        required: true
+        timeout: 30000
+        skill: "documentation-suite"
+        outputs:
+          - "doc-review-report.md"
+
+  - id: "database-workflow"
+    name: "Database Workflow"
+    description: "Workflow for database operations"
+    stages:
+      - id: "db-analysis"
+        name: "Database Analysis"
+        description: "Analyze database requirements"
+        required: true
+        timeout: 30000
+        skill: "database-specialist"
+        outputs:
+          - "db-analysis.md"
+
+      - id: "db-design"
+        name: "Database Design"
+        description: "Design database schema"
+        required: true
+        timeout: 30000
+        skill: "database-specialist"
+        outputs:
+          - "db-schema.md"
+
+      - id: "db-implementation"
+        name: "Database Implementation"
+        description: "Implement database changes"
+        required: true
+        timeout: 60000
+        skill: "database-specialist"
+        outputs:
+          - "db-changes.md"
+
+      - id: "db-testing"
+        name: "Database Testing"
+        description: "Test database changes"
+        required: true
+        timeout: 30000
+        skill: "database-specialist"
+        outputs:
+          - "db-test-report.md"
+
+  - id: "analysis-workflow"
+    name: "Code Analysis Workflow"
+    description: "Workflow for code analysis"
+    stages:
+      - id: "analysis-planning"
+        name: "Analysis Planning"
+        description: "Plan analysis approach"
+        required: true
+        timeout: 20000
+        skill: "fullstack-engine"
+        outputs:
+          - "analysis-plan.md"
+
+      - id: "analysis-execution"
+        name: "Analysis Execution"
+        description: "Execute code analysis"
+        required: true
+        timeout: 60000
+        skill: "fullstack-engine"
+        outputs:
+          - "analysis-results.md"
+
+      - id: "analysis-report"
+        name: "Analysis Report"
+        description: "Generate analysis report"
+        required: true
+        timeout: 30000
+        skill: "fullstack-engine"
+        outputs:
+          - "analysis-report.md"
+
+  - id: "search-workflow"
+    name: "Search Workflow"
+    description: "Workflow for searching and research"
+    stages:
+      - id: "search-planning"
+        name: "Search Planning"
+        description: "Plan search strategy"
+        required: true
+        timeout: 20000
+        outputs:
+          - "search-plan.md"
+
+      - id: "search-execution"
+        name: "Search Execution"
+        description: "Execute search queries"
+        required: true
+        timeout: 30000
+        outputs:
+          - "search-results.md"
+
+      - id: "search-synthesis"
+        name: "Search Synthesis"
+        description: "Synthesize search results"
+        required: true
+        timeout: 30000
+        outputs:
+          - "search-summary.md"
+
+  - id: "container-workflow"
+    name: "Containerization Workflow"
+    description: "Workflow for Docker and container management"
+    stages:
+      - id: "dockerfile-creation"
+        name: "Dockerfile Creation"
+        description: "Create Dockerfile and docker-compose"
+        required: true
+        timeout: 30000
+        skill: "devops-engineer"
+        outputs:
+          - "docker-files.md"
+
+      - id: "container-build"
+        name: "Container Build"
+        description: "Build Docker images"
+        required: true
+        timeout: 60000
+        skill: "devops-engineer"
+        outputs:
+          - "build-log.md"
+
+      - id: "container-test"
+        name: "Container Testing"
+        description: "Test containers locally"
+        required: true
+        timeout: 30000
+        skill: "devops-engineer"
+        outputs:
+          - "test-report.md"
+
+  - id: "api-workflow"
+    name: "API Development Workflow"
+    description: "Workflow for building APIs"
+    stages:
+      - id: "api-design"
+        name: "API Design"
+        description: "Design API endpoints and contracts"
+        required: true
+        timeout: 30000
+        skill: "backend-master"
+        outputs:
+          - "api-spec.md"
+
+      - id: "api-implementation"
+        name: "API Implementation"
+        description: "Implement API endpoints"
+        required: true
+        timeout: 90000
+        skill: "backend-master"
+        outputs:
+          - "api-code.md"
+
+      - id: "api-testing"
+        name: "API Testing"
+        description: "Test API endpoints"
+        required: true
+        timeout: 60000
+        skill: "testing-master"
+        outputs:
+          - "api-test-report.md"
+
+      - id: "api-documentation"
+        name: "API Documentation"
+        description: "Generate API documentation"
+        required: true
+        timeout: 30000
+        skill: "documentation-suite"
+        outputs:
+          - "api-docs.md"
+
+  - id: "data-workflow"
+    name: "Data Processing Workflow"
+    description: "Workflow for data processing"
+    stages:
+      - id: "data-analysis"
+        name: "Data Analysis"
+        description: "Analyze data requirements"
+        required: true
+        timeout: 30000
+        skill: "database-specialist"
+        outputs:
+          - "data-analysis.md"
+
+      - id: "data-transformation"
+        name: "Data Transformation"
+        description: "Transform data"
+        required: true
+        timeout: 60000
+        skill: "database-specialist"
+        outputs:
+          - "transformed-data.md"
+
+      - id: "data-validation"
+        name: "Data Validation"
+        description: "Validate processed data"
+        required: true
+        timeout: 30000
+        skill: "database-specialist"
+        outputs:
+          - "validation-report.md"
