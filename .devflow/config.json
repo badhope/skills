@@ -1,0 +1,65 @@
+{
+  "providers": {
+    "openai": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "anthropic": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "google": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "siliconflow": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "aliyun": {
+      "timeout": 30000,
+      "maxRetries": 3,
+      "apiKey": "sk-b8669932bc524dd191a14fc417079e8e"
+    },
+    "zhipu": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "baidu": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "deepseek": {
+      "timeout": 30000,
+      "maxRetries": 3
+    },
+    "ollama": {
+      "timeout": 60000,
+      "maxRetries": 1
+    },
+    "lmstudio": {
+      "timeout": 60000,
+      "maxRetries": 1
+    }
+  },
+  "defaultProvider": "aliyun",
+  "chat": {
+    "defaultTemperature": 0.7,
+    "defaultMaxTokens": 4096,
+    "saveHistory": true,
+    "historyLimit": 100
+  },
+  "memory": {
+    "enabled": true,
+    "autoRecall": true,
+    "ragEnabled": false,
+    "graphEnabled": true,
+    "knowledgeEnabled": true,
+    "maxMemories": 10000
+  },
+  "sandbox": {
+    "level": "balanced",
+    "allowDangerousOps": false,
+    "confirmOnRisk": true
+  }
+}

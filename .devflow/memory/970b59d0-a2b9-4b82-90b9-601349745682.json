@@ -1,0 +1,17 @@
+{
+  "id": "970b59d0-a2b9-4b82-90b9-601349745682",
+  "taskId": "chat-1778545180206",
+  "input": "用一句话介绍你自己",
+  "output": "我是通义千问（Qwen），由阿里巴巴集团旗下通义实验室自主研发的大语言模型，致力于为你提供准确、高效且实用的智能助手服务。",
+  "skillUsed": "chat:aliyun:qwen3.6-flash",
+  "context": {
+    "provider": "aliyun",
+    "model": "qwen3.6-flash"
+  },
+  "tags": [
+    "chat",
+    "aliyun",
+    "qwen3.6-flash"
+  ],
+  "timestamp": "2026-05-12T00:19:40.206Z"
+}

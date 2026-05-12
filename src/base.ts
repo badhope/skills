@@ -22,6 +22,8 @@ export abstract class BaseProvider {
   protected config: ProviderConfig;
   protected providerType: ProviderType;
   protected providerInfo: typeof PROVIDER_INFO[ProviderType];
+  private _modelsCache: { data: string[]; timestamp: number } | null = null;
+  private static readonly CACHE_TTL = 60_000; // 1 分钟缓存
 
   constructor(
     providerType: ProviderType,
@@ -36,6 +38,65 @@ export abstract class BaseProvider {
   abstract chat(params: ChatParams): Promise<ChatResponse>;
   abstract stream(params: ChatParams): AsyncGenerator<StreamChunk>;
   abstract isAvailable(): Promise<boolean>;
+
+  /**
+   * 从平台 API 拉取真实模型列表（带 1 分钟缓存）
+   */
+  async listRemoteModels(): Promise<string[]> {
+    const now = Date.now();
+    if (this._modelsCache && now - this._modelsCache.timestamp < BaseProvider.CACHE_TTL) {
+      return this._modelsCache.data;
+    }
+    try {
+      const url = `${this.getBaseUrl()}/models`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.buildHeaders(),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) return this._modelsCache?.data || [];
+      const data: any = await response.json();
+      const models: Array<{ id: string }> = data.data || data || [];
+      const sorted = models.map(m => m.id).sort();
+      this._modelsCache = { data: sorted, timestamp: now };
+      return sorted;
+    } catch {
+      return this._modelsCache?.data || [];
+    }
+  }
+
+  /**
+   * 在平台搜索模型（模糊匹配）
+   */
+  async searchModels(keyword: string): Promise<string[]> {
+    const allModels = await this.listRemoteModels();
+    const lower = keyword.toLowerCase();
+    return allModels.filter(id => id.toLowerCase().includes(lower));
+  }
+
+  /**
+   * 查找模型：先精确匹配，再前缀匹配，再模糊搜索
+   * 返回 { exact, candidates }
+   */
+  async findModel(modelName: string): Promise<{ exact: string | null; candidates: string[] }> {
+    const allModels = await this.listRemoteModels();
+    const lower = modelName.toLowerCase();
+
+    // 1. 精确匹配
+    const exact = allModels.find(id => id.toLowerCase() === lower);
+    if (exact) return { exact, candidates: [] };
+
+    // 2. 前缀匹配
+    const prefixMatches = allModels.filter(id => id.toLowerCase().startsWith(lower));
+    if (prefixMatches.length === 1) return { exact: prefixMatches[0], candidates: [] };
+    if (prefixMatches.length > 1) return { exact: null, candidates: prefixMatches };
+
+    // 3. 包含匹配
+    const containsMatches = allModels.filter(id => id.toLowerCase().includes(lower));
+    if (containsMatches.length > 0) return { exact: null, candidates: containsMatches.slice(0, 10) };
+
+    return { exact: null, candidates: [] };
+  }
 
   getName(): string {
     return this.providerInfo.displayName;

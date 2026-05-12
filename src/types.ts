@@ -48,7 +48,7 @@ export interface ModelInfo {
 export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
-  model: string;
+  model?: string;
   timeout?: number;
   maxRetries?: number;
   defaultTemperature?: number;
@@ -116,64 +116,73 @@ export const PROVIDER_INFO: Record<ProviderType, {
   openai: {
     name: 'openai',
     displayName: 'OpenAI',
-    description: 'GPT-5.5/5.4系列模型，国际领先',
+    description: 'GPT-4o/o1系列模型，国际领先 (2026-04)',
     baseUrl: 'https://api.openai.com/v1',
     requiresApiKey: true,
     freeTier: false,
     models: [
       {
-        id: 'gpt-5.5-instant',
-        name: 'GPT-5.5 Instant',
+        id: 'gpt-4o',
+        name: 'GPT-4o',
         provider: 'openai',
-        contextWindow: 400000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 1.25, outputPerMillion: 10, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+        contextWindow: 128000,
+        maxOutput: 4096,
+        pricing: { inputPerMillion: 2.5, outputPerMillion: 10, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: true, audio: true }
       },
       {
-        id: 'gpt-5.4',
-        name: 'GPT-5.4',
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
         provider: 'openai',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 5, outputPerMillion: 30, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+        contextWindow: 128000,
+        maxOutput: 4096,
+        pricing: { inputPerMillion: 0.15, outputPerMillion: 0.6, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: true, audio: false }
       },
       {
-        id: 'gpt-5.4-nano',
-        name: 'GPT-5.4 Nano',
+        id: 'o1-preview',
+        name: 'o1 Preview',
         provider: 'openai',
-        contextWindow: 400000,
+        contextWindow: 128000,
         maxOutput: 32768,
-        pricing: { inputPerMillion: 0.05, outputPerMillion: 0.4, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+        pricing: { inputPerMillion: 15, outputPerMillion: 60, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: true, vision: true, audio: false }
+      },
+      {
+        id: 'o1-mini',
+        name: 'o1 Mini',
+        provider: 'openai',
+        contextWindow: 128000,
+        maxOutput: 65536,
+        pricing: { inputPerMillion: 3, outputPerMillion: 12, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: true, vision: false, audio: false }
       }
     ]
   },
   anthropic: {
     name: 'anthropic',
     displayName: 'Anthropic Claude',
-    description: 'Claude 4.7/4.6系列，编程和Agent能力强',
+    description: 'Claude 4系列，编程和Agent能力强 (2026-05)',
     baseUrl: 'https://api.anthropic.com',
     requiresApiKey: true,
     freeTier: false,
     models: [
       {
-        id: 'claude-opus-4.7',
-        name: 'Claude Opus 4.7',
+        id: 'claude-sonnet-4-20250514',
+        name: 'Claude Sonnet 4',
         provider: 'anthropic',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 5, outputPerMillion: 25, currency: 'USD' },
+        contextWindow: 200000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 3, outputPerMillion: 15, currency: 'USD' },
         capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: true, vision: true, audio: false }
       },
       {
-        id: 'claude-sonnet-4.6',
-        name: 'Claude Sonnet 4.6',
+        id: 'claude-opus-4-20250514',
+        name: 'Claude Opus 4',
         provider: 'anthropic',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 3, outputPerMillion: 15, currency: 'USD' },
+        contextWindow: 200000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 15, outputPerMillion: 75, currency: 'USD' },
         capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: true, vision: true, audio: false }
       }
     ]
@@ -181,27 +190,36 @@ export const PROVIDER_INFO: Record<ProviderType, {
   google: {
     name: 'google',
     displayName: 'Google Gemini',
-    description: 'Gemini 3.1/2.5系列，多模态能力强',
-    baseUrl: 'https://generativelanguage.googleapis.com',
+    description: 'Gemini 3系列，多模态能力强 (2026-05)',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     requiresApiKey: true,
     freeTier: true,
     models: [
       {
-        id: 'gemini-3.1-flash',
+        id: 'gemini-3-flash-preview',
+        name: 'Gemini 3 Flash',
+        provider: 'google',
+        contextWindow: 1000000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.15, outputPerMillion: 0.6, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+      },
+      {
+        id: 'gemini-3.1-flash-preview',
         name: 'Gemini 3.1 Flash',
         provider: 'google',
         contextWindow: 1000000,
-        maxOutput: 65536,
+        maxOutput: 8192,
         pricing: { inputPerMillion: 0.25, outputPerMillion: 1.5, currency: 'USD' },
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
       },
       {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
+        id: 'gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro',
         provider: 'google',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 0.15, outputPerMillion: 0.6, currency: 'USD' },
+        contextWindow: 2000000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 3.5, outputPerMillion: 10.5, currency: 'USD' },
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
       }
     ]
@@ -209,83 +227,265 @@ export const PROVIDER_INFO: Record<ProviderType, {
   siliconflow: {
     name: 'siliconflow',
     displayName: '硅基流动',
-    description: 'DeepSeek-V4/Kimi K2.6/GLM-5.1，国产低成本',
+    description: 'DeepSeek-R1/V3/Qwen2.5，国产低成本 (2026)',
     baseUrl: 'https://api.siliconflow.cn/v1',
     requiresApiKey: true,
     freeTier: true,
     models: [
       {
-        id: 'deepseek-ai/DeepSeek-V4-Pro',
-        name: 'DeepSeek V4 Pro',
+        id: 'deepseek-ai/DeepSeek-R1',
+        name: 'DeepSeek R1',
         provider: 'siliconflow',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 2, outputPerMillion: 4, currency: 'CNY' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: false, audio: false }
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 4, outputPerMillion: 16, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: true, vision: false, audio: false }
       },
       {
-        id: 'deepseek-ai/DeepSeek-V4-Flash',
-        name: 'DeepSeek V4 Flash',
+        id: 'deepseek-ai/DeepSeek-V3',
+        name: 'DeepSeek V3',
         provider: 'siliconflow',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 0.5, outputPerMillion: 1, currency: 'CNY' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: false, audio: false }
-      },
-      {
-        id: 'moonshotai/kimi-k2.6',
-        name: 'Kimi K2.6',
-        provider: 'siliconflow',
-        contextWindow: 256000,
-        maxOutput: 32768,
-        pricing: { inputPerMillion: 3, outputPerMillion: 15, currency: 'CNY' },
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 2, outputPerMillion: 8, currency: 'CNY' },
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
       },
       {
-        id: 'THUDM/glm-5.1',
-        name: 'GLM-5.1',
+        id: 'Qwen/Qwen2.5-72B-Instruct',
+        name: 'Qwen2.5 72B',
         provider: 'siliconflow',
-        contextWindow: 200000,
+        contextWindow: 128000,
         maxOutput: 8192,
-        pricing: { inputPerMillion: 6, outputPerMillion: 24, currency: 'CNY' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: false, audio: false }
+        pricing: { inputPerMillion: 1.2, outputPerMillion: 4.8, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+        name: 'Qwen2.5 Coder 32B',
+        provider: 'siliconflow',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.8, outputPerMillion: 3.2, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'meta-llama/Llama-3.3-70B-Instruct',
+        name: 'Llama 3.3 70B',
+        provider: 'siliconflow',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 1.5, outputPerMillion: 6, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
       }
     ]
   },
   aliyun: {
     name: 'aliyun',
     displayName: '阿里云百炼',
-    description: 'Qwen 3.6/3.5系列，编程Agent全面升级',
+    description: 'Qwen3.6/Max/Plus/Flash，100+模型，编程Agent全面升级 (2026-05)',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     requiresApiKey: true,
     freeTier: true,
     models: [
-      {
-        id: 'qwen3.6-max',
-        name: 'Qwen 3.6 Max',
-        provider: 'aliyun',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 5, outputPerMillion: 20, currency: 'CNY' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
-      },
+      // Qwen3.6 系列 (最新)
       {
         id: 'qwen3.6-plus',
-        name: 'Qwen 3.6 Plus',
+        name: 'Qwen3.6-Plus',
         provider: 'aliyun',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 2, outputPerMillion: 8, currency: 'CNY' },
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 4, outputPerMillion: 12, currency: 'CNY' },
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
       },
       {
         id: 'qwen3.6-flash',
-        name: 'Qwen 3.6 Flash',
+        name: 'Qwen3.6-Flash',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.5, outputPerMillion: 1, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+      },
+      // Qwen Max 系列 (旗舰)
+      {
+        id: 'qwen-max',
+        name: 'Qwen Max',
+        provider: 'aliyun',
+        contextWindow: 32000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 20, outputPerMillion: 60, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+      },
+      {
+        id: 'qwen-max-latest',
+        name: 'Qwen Max Latest',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 20, outputPerMillion: 60, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+      },
+      // Qwen Plus 系列
+      {
+        id: 'qwen-plus',
+        name: 'Qwen Plus',
+        provider: 'aliyun',
+        contextWindow: 129024,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 2, outputPerMillion: 6, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: true, audio: false }
+      },
+      // Qwen Turbo 系列 (高性价比)
+      {
+        id: 'qwen-turbo',
+        name: 'Qwen Turbo',
         provider: 'aliyun',
         contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 0.5, outputPerMillion: 2, currency: 'CNY' },
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.3, outputPerMillion: 0.6, currency: 'CNY' },
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: true, audio: false }
+      },
+      {
+        id: 'qwen-turbo-latest',
+        name: 'Qwen Turbo Latest',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.3, outputPerMillion: 0.6, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: true, audio: false }
+      },
+      // Qwen Coder 系列 (编程专用)
+      {
+        id: 'qwen-coder-plus',
+        name: 'Qwen Coder Plus',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 2, outputPerMillion: 6, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'qwen-coder-turbo',
+        name: 'Qwen Coder Turbo',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.5, outputPerMillion: 1, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      // Qwen Long 系列 (长文本)
+      {
+        id: 'qwen-long',
+        name: 'Qwen Long',
+        provider: 'aliyun',
+        contextWindow: 10000000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.5, outputPerMillion: 2, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: false, thinking: false, vision: false, audio: false }
+      },
+      // Qwen VL 系列 (视觉)
+      {
+        id: 'qwen-vl-max',
+        name: 'Qwen VL Max',
+        provider: 'aliyun',
+        contextWindow: 32000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 20, outputPerMillion: 60, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: false, vision: true, audio: false }
+      },
+      {
+        id: 'qwen-vl-plus',
+        name: 'Qwen VL Plus',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 8, outputPerMillion: 8, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: false, vision: true, audio: false }
+      },
+      // Qwen Audio 系列 (语音)
+      {
+        id: 'qwen-audio-turbo',
+        name: 'Qwen Audio Turbo',
+        provider: 'aliyun',
+        contextWindow: 8000,
+        maxOutput: 2048,
+        pricing: { inputPerMillion: 4, outputPerMillion: 8, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: false, vision: false, audio: true }
+      },
+      // Qwen2.5 系列 (开源)
+      {
+        id: 'qwen2.5-72b-instruct',
+        name: 'Qwen2.5-72B',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 4, outputPerMillion: 4, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'qwen2.5-32b-instruct',
+        name: 'Qwen2.5-32B',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 2, outputPerMillion: 2, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'qwen2.5-14b-instruct',
+        name: 'Qwen2.5-14B',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 1, outputPerMillion: 1, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      {
+        id: 'qwen2.5-7b-instruct',
+        name: 'Qwen2.5-7B',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.5, outputPerMillion: 0.5, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
+      },
+      // DeepSeek 系列 (阿里云托管)
+      {
+        id: 'deepseek-r1',
+        name: 'DeepSeek R1',
+        provider: 'aliyun',
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 4, outputPerMillion: 16, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: true, vision: false, audio: false }
+      },
+      {
+        id: 'deepseek-v3',
+        name: 'DeepSeek V3',
+        provider: 'aliyun',
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 1, outputPerMillion: 2, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: false, vision: false, audio: false }
+      },
+      // 第三方模型
+      {
+        id: 'glm-4-plus',
+        name: 'GLM-4-Plus',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 50, outputPerMillion: 50, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: true, thinking: false, vision: true, audio: false }
+      },
+      {
+        id: 'kimi-k2-8b',
+        name: 'Kimi K2-8B',
+        provider: 'aliyun',
+        contextWindow: 128000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 2, outputPerMillion: 2, currency: 'CNY' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: false, vision: false, audio: false }
       }
     ]
   },
@@ -357,51 +557,51 @@ export const PROVIDER_INFO: Record<ProviderType, {
   deepseek: {
     name: 'deepseek',
     displayName: 'DeepSeek',
-    description: 'DeepSeek V4系列，开源编程第一',
+    description: 'DeepSeek-R1/V3，开源编程第一 (2026-01)',
     baseUrl: 'https://api.deepseek.com/v1',
     requiresApiKey: true,
     freeTier: false,
     models: [
       {
-        id: 'deepseek-v4-pro',
-        name: 'DeepSeek V4 Pro',
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek R1',
         provider: 'deepseek',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 0.28, outputPerMillion: 0.42, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: false, audio: false }
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.55, outputPerMillion: 2.19, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: true, vision: false, audio: false }
       },
       {
-        id: 'deepseek-v4-flash',
-        name: 'DeepSeek V4 Flash',
+        id: 'deepseek-chat',
+        name: 'DeepSeek V3',
         provider: 'deepseek',
-        contextWindow: 1000000,
-        maxOutput: 65536,
-        pricing: { inputPerMillion: 0.07, outputPerMillion: 0.1, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: true, vision: false, audio: false }
+        contextWindow: 64000,
+        maxOutput: 8192,
+        pricing: { inputPerMillion: 0.27, outputPerMillion: 1.1, currency: 'USD' },
+        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
       }
     ]
   },
   ollama: {
     name: 'ollama',
     displayName: 'Ollama (本地)',
-    description: '本地模型运行，支持Gemma4/Qwen3/GLM4',
-    baseUrl: 'http://localhost:11434/v1',
+    description: '本地模型运行，支持DeepSeek/Qwen/Llama等',
+    baseUrl: 'http://127.0.0.1:11434',
     requiresApiKey: false,
     freeTier: true,
     models: [
       {
-        id: 'gemma4:31b-coding-mtp-bf16',
-        name: 'Gemma 4 31B Coding MTP',
+        id: 'deepseek-r1:14b',
+        name: 'DeepSeek R1 14B',
         provider: 'ollama',
-        contextWindow: 256000,
+        contextWindow: 128000,
         maxOutput: 8192,
         pricing: { inputPerMillion: 0, outputPerMillion: 0, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: true, audio: false }
+        capabilities: { chat: true, stream: true, embed: false, tools: false, thinking: true, vision: false, audio: false }
       },
       {
-        id: 'qwen3-coder',
-        name: 'Qwen 3 Coder',
+        id: 'qwen2.5:14b',
+        name: 'Qwen2.5 14B',
         provider: 'ollama',
         contextWindow: 128000,
         maxOutput: 8192,
@@ -409,8 +609,8 @@ export const PROVIDER_INFO: Record<ProviderType, {
         capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
       },
       {
-        id: 'glm-4.7-flash',
-        name: 'GLM 4.7 Flash',
+        id: 'llama3.2:8b',
+        name: 'Llama 3.2 8B',
         provider: 'ollama',
         contextWindow: 128000,
         maxOutput: 8192,
@@ -423,22 +623,13 @@ export const PROVIDER_INFO: Record<ProviderType, {
     name: 'lmstudio',
     displayName: 'LM Studio (本地)',
     description: '本地模型GUI管理，OpenAI兼容',
-    baseUrl: 'http://localhost:1234/v1',
+    baseUrl: 'http://127.0.0.1:1234/v1',
     requiresApiKey: false,
     freeTier: true,
     models: [
       {
-        id: 'llama-3.1-8b',
-        name: 'Llama 3.1 8B',
-        provider: 'lmstudio',
-        contextWindow: 128000,
-        maxOutput: 8192,
-        pricing: { inputPerMillion: 0, outputPerMillion: 0, currency: 'USD' },
-        capabilities: { chat: true, stream: true, embed: true, tools: true, thinking: false, vision: false, audio: false }
-      },
-      {
-        id: 'mistral-7b',
-        name: 'Mistral 7B',
+        id: 'loaded-model',
+        name: '已加载的模型',
         provider: 'lmstudio',
         contextWindow: 128000,
         maxOutput: 8192,

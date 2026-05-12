@@ -1,0 +1,16 @@
+{
+  "id": "e87a1ff1-24a6-4c94-9221-b5cbdff32db0",
+  "taskId": "fac1f049-eef1-4f06-9709-393743aa919d",
+  "input": "创建 test_demo.js 文件，内容是 console.log('Agent Test OK!')",
+  "output": "  • 任务类型: fullstack\n  • 执行步骤: 6/6 成功\n  • 耗时: 206.5秒",
+  "skillUsed": "chat:agent:core-loop",
+  "context": {
+    "provider": "agent",
+    "model": "core-loop"
+  },
+  "tags": [
+    "agent",
+    "fullstack"
+  ],
+  "timestamp": "2026-05-11T19:11:11.261Z"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "4cfadacb-833d-4896-a8d9-fad401fd12d7",
+  "taskId": "chat-1778526382030",
+  "input": "你好",
+  "output": "你好！很高兴与你交流。请问今天有什么我可以帮你的吗？",
+  "skillUsed": "chat:aliyun:qwen3.6-flash",
+  "context": {
+    "provider": "aliyun",
+    "model": "qwen3.6-flash"
+  },
+  "tags": [
+    "chat",
+    "aliyun",
+    "qwen3.6-flash"
+  ],
+  "timestamp": "2026-05-11T19:06:22.030Z"
+}
