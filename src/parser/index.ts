@@ -14,3 +14,19 @@ export { extractSymbols, getSymbolsInRange, findSymbolByName } from './symbols.j
 export type { CodeSymbol, SymbolKind } from './symbols.js';
 
 export { parseCache } from './cache.js';
+
+// Dependency graph
+export { buildDependencyGraph } from './dependency-graph.js';
+export type { FileDependency, DependencyGraph } from './dependency-graph.js';
+
+// Importance ranker
+export { rankSymbols } from './importance-ranker.js';
+export type { SymbolImportance } from './importance-ranker.js';
+
+// Token budget
+export { createTokenBudget, estimateTokens, formatSymbolEntry, formatFileMap } from './token-budget.js';
+export type { TokenBudget } from './token-budget.js';
+
+// Repo map generator
+export { generateRepoMap } from './repo-map.js';
+export type { RepoMapOptions, RepoMapResult } from './repo-map.js';
