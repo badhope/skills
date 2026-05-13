@@ -1,0 +1,42 @@
+/**
+ * Analysis Module - Unified Re-exports
+ *
+ * Cline/OpenHands-style code understanding with semantic chunking,
+ * reference finding, and code indexing.
+ */
+
+// Semantic chunker
+export {
+  chunkFile,
+  chunkFiles,
+  getChunkById,
+  findRelevantChunks,
+} from './semantic-chunker.js';
+export type {
+  CodeChunk,
+  ChunkOptions,
+} from './semantic-chunker.js';
+
+// Reference finder
+export {
+  findReferences,
+  findReferencesInFile,
+} from './reference-finder.js';
+export type {
+  Reference,
+  ReferenceResult,
+  FindReferencesOptions,
+} from './reference-finder.js';
+
+// Code indexer
+export {
+  buildCodeIndex,
+  searchIndex,
+  getDefinition,
+  getTypeInfo,
+} from './code-indexer.js';
+export type {
+  CodeIndex,
+  IndexEntry,
+  SearchOptions,
+} from './code-indexer.js';
