@@ -2,33 +2,10 @@ import { MEMORY_DIR } from '../utils/index.js';
 import { ragModule } from './rag.js';
 import fs from 'fs/promises';
 import path from 'path';
+import type { MemoryInteraction, MemoryRecord, MemoryStats } from './memory-types.js';
 
-// 直接内联 AgentMemory 的核心功能（避免跨包引用问题）
-interface MemoryInteraction {
-  id: string;
-  taskId: string;
-  input: string;
-  output: string;
-  skillUsed: string;
-  context?: Record<string, unknown>;
-  tags: string[];
-  timestamp: Date;
-}
-
-interface MemoryRecord {
-  interaction: MemoryInteraction;
-  relevance: number;
-}
-
-interface MemoryStats {
-  totalInteractions: number;
-  uniqueTasks: number;
-  interactionsToday: number;
-  interactionsYesterday: number;
-  indexSize: number;
-  skillUsage: Record<string, number>;
-  skillsUsed: string[];
-}
+// Re-export 类型
+export type { MemoryInteraction, MemoryRecord, MemoryStats };
 
 /**
  * 统一记忆管理器

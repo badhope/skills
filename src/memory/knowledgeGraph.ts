@@ -1,65 +1,33 @@
 import { MEMORY_DIR } from '../utils/index.js';
 import path from 'path';
 import fs from 'fs/promises';
+import type {
+  EntityType,
+  RelationshipType,
+  Entity,
+  Relationship,
+  PathNode,
+  KnowledgeGraphStats,
+  KnowledgeGraphData,
+  MemoryEntry,
+} from './knowledge-types.js';
+import { getRelated, query, findPaths } from './knowledge-query.js';
+import { extractFromMemories } from './knowledge-extraction-engine.js';
 
-// ============================================================
-// 类型定义
-// ============================================================
+// Re-export 类型
+export type {
+  EntityType,
+  RelationshipType,
+  Entity,
+  Relationship,
+  PathNode,
+  KnowledgeGraphStats,
+  KnowledgeGraphData,
+  MemoryEntry,
+};
 
-/** 实体类型 */
-export type EntityType = 'person' | 'project' | 'tech' | 'concept' | 'skill';
-
-/** 关系类型 */
-export type RelationshipType = 'uses' | 'knows' | 'likes' | 'created' | 'related_to';
-
-/** 实体 */
-export interface Entity {
-  id: string;
-  type: EntityType;
-  label: string;
-  attributes: Record<string, string>;
-  createdAt: string;
-}
-
-/** 关系 */
-export interface Relationship {
-  id: string;
-  fromId: string;
-  toId: string;
-  type: RelationshipType;
-  weight: number;
-  createdAt: string;
-}
-
-/** 持久化存储结构 */
-interface KnowledgeGraphData {
-  entities: Record<string, Entity>;
-  relationships: Relationship[];
-}
-
-/** 路径中的节点 */
-export interface PathNode {
-  entityId: string;
-  label: string;
-  type: EntityType;
-  relationshipType: RelationshipType;
-}
-
-/** 统计信息 */
-export interface KnowledgeGraphStats {
-  entityCount: number;
-  relationshipCount: number;
-  entityByType: Record<EntityType, number>;
-  relationshipByType: Record<RelationshipType, number>;
-}
-
-/** 记忆条目（与 manager.ts 中的 MemoryInteraction 兼容） */
-interface MemoryEntry {
-  input: string;
-  output?: string;
-  timestamp?: string | Date;
-  tags?: string[];
-}
+// Re-export 查询函数（向后兼容）
+export { getRelated, query, findPaths } from './knowledge-query.js';
 
 // ============================================================
 // 知识图谱类
@@ -221,7 +189,7 @@ export class KnowledgeGraph {
   }
 
   // ----------------------------------------------------------
-  // 查询操作
+  // 查询操作（委托给 knowledge-query 模块）
   // ----------------------------------------------------------
 
   /**
@@ -230,33 +198,12 @@ export class KnowledgeGraph {
    * @param type     可选，按关系类型过滤
    * @returns 相关实体列表（附带关系信息）
    */
-  async getRelated(
+  async getRelatedEntities(
     entityId: string,
     type?: RelationshipType,
   ): Promise<Array<{ entity: Entity; relationship: Relationship }>> {
     await this.init();
-
-    const results: Array<{ entity: Entity; relationship: Relationship }> = [];
-
-    for (const rel of this.relationships) {
-      if (type && rel.type !== type) continue;
-
-      let targetId: string | undefined;
-      if (rel.fromId === entityId) {
-        targetId = rel.toId;
-      } else if (rel.toId === entityId) {
-        targetId = rel.fromId;
-      }
-
-      if (targetId && this.entities[targetId]) {
-        results.push({
-          entity: this.entities[targetId],
-          relationship: rel,
-        });
-      }
-    }
-
-    return results;
+    return getRelated(this.entities, this.relationships, entityId, type);
   }
 
   /**
@@ -270,27 +217,11 @@ export class KnowledgeGraph {
     attributes?: Record<string, string>,
   ): Promise<Entity[]> {
     await this.init();
-
-    let results = Object.values(this.entities);
-
-    if (type) {
-      results = results.filter((e) => e.type === type);
-    }
-
-    if (attributes) {
-      results = results.filter((e) => {
-        for (const [key, value] of Object.entries(attributes)) {
-          if (e.attributes[key] !== value) return false;
-        }
-        return true;
-      });
-    }
-
-    return results;
+    return query(this.entities, type, attributes);
   }
 
   // ----------------------------------------------------------
-  // 路径搜索
+  // 路径搜索（委托给 knowledge-query 模块）
   // ----------------------------------------------------------
 
   /**
@@ -306,86 +237,15 @@ export class KnowledgeGraph {
     maxDepth = 5,
   ): Promise<PathNode[][]> {
     await this.init();
-
-    if (!this.entities[fromId] || !this.entities[toId]) return [];
-    if (fromId === toId) return [];
-
-    const allPaths: PathNode[][] = [];
-
-    // 构建邻接表
-    const adjacency = new Map<string, Array<{ neighborId: string; relType: RelationshipType }>>();
-    for (const rel of this.relationships) {
-      // 双向添加
-      if (!adjacency.has(rel.fromId)) adjacency.set(rel.fromId, []);
-      if (!adjacency.has(rel.toId)) adjacency.set(rel.toId, []);
-
-      adjacency.get(rel.fromId)!.push({ neighborId: rel.toId, relType: rel.type });
-      adjacency.get(rel.toId)!.push({ neighborId: rel.fromId, relType: rel.type });
-    }
-
-    // DFS
-    const visited = new Set<string>();
-    const currentPath: PathNode[] = [];
-
-    const startEntity = this.entities[fromId];
-    currentPath.push({
-      entityId: fromId,
-      label: startEntity.label,
-      type: startEntity.type,
-      relationshipType: 'related_to', // 起始节点无关系类型
-    });
-
-    const dfs = (nodeId: string, depth: number): void => {
-      if (depth > maxDepth) return;
-      if (nodeId === toId) {
-        allPaths.push([...currentPath]);
-        return;
-      }
-
-      visited.add(nodeId);
-      const neighbors = adjacency.get(nodeId) || [];
-
-      for (const { neighborId, relType } of neighbors) {
-        if (visited.has(neighborId)) continue;
-
-        const neighborEntity = this.entities[neighborId];
-        if (!neighborEntity) continue;
-
-        currentPath.push({
-          entityId: neighborId,
-          label: neighborEntity.label,
-          type: neighborEntity.type,
-          relationshipType: relType,
-        });
-
-        dfs(neighborId, depth + 1);
-
-        currentPath.pop();
-      }
-
-      visited.delete(nodeId);
-    };
-
-    dfs(fromId, 0);
-
-    // 按路径长度排序（短路径优先）
-    allPaths.sort((a, b) => a.length - b.length);
-    return allPaths;
+    return findPaths(this.entities, this.relationships, fromId, toId, maxDepth);
   }
 
   // ----------------------------------------------------------
-  // 从记忆中提取实体和关系
+  // 从记忆中提取实体和关系（委托给 knowledge-extraction-engine 模块）
   // ----------------------------------------------------------
 
   /**
    * 从记忆记录中自动提取实体和关系
-   *
-   * 提取规则：
-   * - "我是/叫/名字是 XXX" → 提取 person 实体
-   * - "喜欢/偏好/常用 XXX" → 提取 likes 关系
-   * - "使用/用了 XXX" → 提取 uses 关系
-   * - "项目叫/名为 XXX" → 提取 project 实体
-   * - 技术关键词（如 Rust, Python, React）→ 提取 tech 实体
    *
    * @param memories 记忆条目数组
    * @returns 提取结果摘要
@@ -395,236 +255,17 @@ export class KnowledgeGraph {
   ): Promise<{ entitiesAdded: number; relationshipsAdded: number }> {
     await this.init();
 
-    let entitiesAdded = 0;
-    let relationshipsAdded = 0;
-
-    // 当前用户实体（用于建立关系）
-    let currentUserEntity: Entity | undefined;
-
-    // 常见技术关键词列表
-    const techKeywords = [
-      'JavaScript', 'TypeScript', 'Python', 'Rust', 'Go', 'Java', 'C++', 'C#',
-      'Ruby', 'PHP', 'Swift', 'Kotlin', 'Dart', 'Scala', 'Haskell', 'Elixir',
-      'React', 'Vue', 'Angular', 'Svelte', 'Next.js', 'Nuxt', 'Gatsby',
-      'Node.js', 'Deno', 'Bun', 'Express', 'Koa', 'Fastify', 'NestJS',
-      'Docker', 'Kubernetes', 'K8s', 'Terraform', 'Ansible',
-      'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'SQLite', 'Elasticsearch',
-      'GraphQL', 'REST', 'gRPC', 'WebSocket',
-      'Git', 'GitHub', 'GitLab', 'Bitbucket',
-      'AWS', 'Azure', 'GCP', 'Vercel', 'Netlify', 'Cloudflare',
-      'Linux', 'Ubuntu', 'Debian', 'CentOS', 'Alpine',
-      'TailwindCSS', 'Bootstrap', 'Sass', 'Less', 'CSS', 'HTML',
-      'Webpack', 'Vite', 'esbuild', 'Rollup', 'Turbopack',
-      'Jest', 'Vitest', 'Mocha', 'Cypress', 'Playwright',
-      'TensorFlow', 'PyTorch', 'OpenCV', 'Pandas', 'NumPy',
-      'Flutter', 'React Native', 'Electron', 'Tauri',
-      'Nginx', 'Apache', 'Caddy', 'Traefik',
-      'RabbitMQ', 'Kafka', 'Zookeeper', 'Consul',
-      'Elasticsearch', 'Logstash', 'Kibana', 'Prometheus', 'Grafana',
-      'OAuth', 'JWT', 'SAML', 'SSO', 'LDAP',
-      'CI/CD', 'GitHub Actions', 'Jenkins', 'Travis CI', 'CircleCI',
-      'Figma', 'Sketch', 'Adobe XD',
-      'Lua', 'Perl', 'R', 'MATLAB', 'Shell', 'Bash', 'PowerShell',
-      'Zig', 'Carbon', 'Nim', 'V', 'Crystal', 'Julia',
-      'SolidJS', 'Qwik', 'Astro', 'Remix', 'SolidStart',
-      'tRPC', 'Prisma', 'Drizzle', 'TypeORM', 'Sequelize',
-      'Supabase', 'Firebase', 'Appwrite', 'PocketBase',
-      'Hono', 'Fastify', 'Axum', 'Actix', 'Spring',
-      'Django', 'Flask', 'FastAPI', 'Rails', 'Laravel', 'Phoenix',
-      'Redis', 'Memcached', 'Cassandra', 'DynamoDB', 'CockroachDB',
-      'Neo4j', 'ArangoDB', 'InfluxDB', 'TimescaleDB',
-      'WebSocket', 'SSE', 'Socket.io', 'MQTT',
-      'OpenAI', 'Anthropic', 'LangChain', 'LlamaIndex',
-      'MCP', 'Claude', 'GPT', 'BERT', 'Transformer',
-    ];
-
-    // 用于去重的集合
-    const processedEntities = new Set<string>();
-    const processedRelationships = new Set<string>();
-
-    for (const memory of memories) {
-      const text = `${memory.input} ${memory.output || ''}`;
-
-      // 规则 1: "我是/叫/名字是 XXX" → person 实体
-      const personPatterns = [
-        /我是\s*([^\s,，。.!！?？]+)/g,
-        /我叫\s*([^\s,，。.!！?？]+)/g,
-        /名字是\s*([^\s,，。.!！?？]+)/g,
-        /我的名字是\s*([^\s,，。.!！?？]+)/g,
-      ];
-      for (const pattern of personPatterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(text)) !== null) {
-          const name = match[1].trim();
-          if (name && !processedEntities.has(`person:${name}`)) {
-            await this.addEntity('person', name);
-            processedEntities.add(`person:${name}`);
-            currentUserEntity = Object.values(this.entities).find(
-              (e) => e.type === 'person' && e.label === name,
-            );
-            entitiesAdded++;
-          }
-        }
-      }
-
-      // 规则 2: "喜欢/偏好/常用 XXX" → likes 关系
-      const likePatterns = [
-        /喜欢\s*([^\s,，。.!！?？]+)/g,
-        /偏好\s*([^\s,，。.!！?？]+)/g,
-        /常用\s*([^\s,，。.!！?？]+)/g,
-        /最爱\s*([^\s,，。.!！?？]+)/g,
-      ];
-      for (const pattern of likePatterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(text)) !== null) {
-          const target = match[1].trim();
-          if (!target) continue;
-
-          // 确保目标实体存在
-          const targetType = this.inferEntityType(target, techKeywords);
-          const targetEntity = await this.addEntity(targetType, target);
-          if (!processedEntities.has(`${targetType}:${target}`)) {
-            processedEntities.add(`${targetType}:${target}`);
-            entitiesAdded++;
-          }
-
-          // 如果有当前用户，建立 likes 关系
-          if (currentUserEntity) {
-            const relKey = `${currentUserEntity.id}:likes:${targetEntity.id}`;
-            if (!processedRelationships.has(relKey)) {
-              await this.addRelationship(currentUserEntity.id, targetEntity.id, 'likes', 0.7);
-              processedRelationships.add(relKey);
-              relationshipsAdded++;
-            }
-          }
-        }
-      }
-
-      // 规则 3: "使用/用了 XXX" → uses 关系
-      const usePatterns = [
-        /使用\s*([^\s,，。.!！?？]+)/g,
-        /用了\s*([^\s,，。.!！?？]+)/g,
-        /在用\s*([^\s,，。.!！?？]+)/g,
-        /正在用\s*([^\s,，。.!！?？]+)/g,
-        /采用\s*([^\s,，。.!！?？]+)/g,
-      ];
-      for (const pattern of usePatterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(text)) !== null) {
-          const target = match[1].trim();
-          if (!target) continue;
-
-          const targetType = this.inferEntityType(target, techKeywords);
-          const targetEntity = await this.addEntity(targetType, target);
-          if (!processedEntities.has(`${targetType}:${target}`)) {
-            processedEntities.add(`${targetType}:${target}`);
-            entitiesAdded++;
-          }
-
-          if (currentUserEntity) {
-            const relKey = `${currentUserEntity.id}:uses:${targetEntity.id}`;
-            if (!processedRelationships.has(relKey)) {
-              await this.addRelationship(currentUserEntity.id, targetEntity.id, 'uses', 0.6);
-              processedRelationships.add(relKey);
-              relationshipsAdded++;
-            }
-          }
-        }
-      }
-
-      // 规则 4: "项目叫/名为 XXX" → project 实体
-      const projectPatterns = [
-        /项目叫\s*([^\s,，。.!！?？]+)/g,
-        /项目名为\s*([^\s,，。.!！?？]+)/g,
-        /项目名是\s*([^\s,，。.!！?？]+)/g,
-        /项目[名是叫]\s*[""「」]([^""「」]+)[""「」]/g,
-      ];
-      for (const pattern of projectPatterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(text)) !== null) {
-          const projectName = match[1].trim();
-          if (projectName && !processedEntities.has(`project:${projectName}`)) {
-            const projectEntity = await this.addEntity('project', projectName);
-            processedEntities.add(`project:${projectName}`);
-            entitiesAdded++;
-
-            // 如果有当前用户，建立 created 关系
-            if (currentUserEntity) {
-              const relKey = `${currentUserEntity.id}:created:${projectEntity.id}`;
-              if (!processedRelationships.has(relKey)) {
-                await this.addRelationship(currentUserEntity.id, projectEntity.id, 'created', 0.8);
-                processedRelationships.add(relKey);
-                relationshipsAdded++;
-              }
-            }
-          }
-        }
-      }
-
-      // 规则 5: 技术关键词 → tech 实体
-      for (const tech of techKeywords) {
-        // 使用词边界匹配，避免部分匹配
-        const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-        if (regex.test(text)) {
-          if (!processedEntities.has(`tech:${tech}`)) {
-            await this.addEntity('tech', tech);
-            processedEntities.add(`tech:${tech}`);
-            entitiesAdded++;
-
-            // 如果有当前用户，建立 uses 关系
-            if (currentUserEntity) {
-              const techEntity = Object.values(this.entities).find(
-                (e) => e.type === 'tech' && e.label === tech,
-              );
-              if (techEntity) {
-                const relKey = `${currentUserEntity.id}:uses:${techEntity.id}`;
-                if (!processedRelationships.has(relKey)) {
-                  await this.addRelationship(currentUserEntity.id, techEntity.id, 'uses', 0.5);
-                  processedRelationships.add(relKey);
-                  relationshipsAdded++;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // 额外规则: "知道/了解/熟悉 XXX" → knows 关系
-      const knowPatterns = [
-        /知道\s*([^\s,，。.!！?？]+)/g,
-        /了解\s*([^\s,，。.!！?？]+)/g,
-        /熟悉\s*([^\s,，。.!！?？]+)/g,
-      ];
-      for (const pattern of knowPatterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(text)) !== null) {
-          const target = match[1].trim();
-          if (!target) continue;
-
-          const targetType = this.inferEntityType(target, techKeywords);
-          const targetEntity = await this.addEntity(targetType, target);
-          if (!processedEntities.has(`${targetType}:${target}`)) {
-            processedEntities.add(`${targetType}:${target}`);
-            entitiesAdded++;
-          }
-
-          if (currentUserEntity) {
-            const relKey = `${currentUserEntity.id}:knows:${targetEntity.id}`;
-            if (!processedRelationships.has(relKey)) {
-              await this.addRelationship(currentUserEntity.id, targetEntity.id, 'knows', 0.6);
-              processedRelationships.add(relKey);
-              relationshipsAdded++;
-            }
-          }
-        }
-      }
-    }
+    const result = await extractFromMemories(memories, {
+      addEntity: (type, label, attributes) => this.addEntity(type, label, attributes),
+      addRelationship: (fromId, toId, type, weight) => this.addRelationship(fromId, toId, type, weight),
+      findEntity: (type, label) =>
+        Object.values(this.entities).find((e) => e.type === type && e.label === label),
+    });
 
     // 最终保存一次
     await this.save();
 
-    return { entitiesAdded, relationshipsAdded };
+    return result;
   }
 
   // ----------------------------------------------------------
@@ -672,31 +313,6 @@ export class KnowledgeGraph {
   // ----------------------------------------------------------
   // 内部工具方法
   // ----------------------------------------------------------
-
-  /**
-   * 根据名称推断实体类型
-   * @param name 名称
-   * @param techKeywords 技术关键词列表
-   */
-  private inferEntityType(name: string, techKeywords: string[]): EntityType {
-    // 检查是否是技术关键词
-    if (techKeywords.some((tech) => tech.toLowerCase() === name.toLowerCase())) {
-      return 'tech';
-    }
-
-    // 检查是否包含编程语言常见后缀
-    if (/\.(js|ts|py|rs|go|java|rb|php|swift|kt|dart|c|cpp|h|cs|lua|pl|r|m|sh|ps1)$/i.test(name)) {
-      return 'tech';
-    }
-
-    // 检查是否是框架/库名（驼峰或短横线命名）
-    if (/^[A-Z][a-zA-Z0-9]*$/.test(name) || /^[a-z]+-[a-z]+(-[a-z]+)*$/.test(name)) {
-      return 'tech';
-    }
-
-    // 默认为概念
-    return 'concept';
-  }
 
   /**
    * 获取所有实体（只读副本）

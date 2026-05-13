@@ -1,53 +1,32 @@
+/**
+ * 错误处理器模块
+ *
+ * 提供 Agent 执行过程中的错误处理能力，包括：
+ * 1. 错误分类与记录
+ * 2. 自动恢复策略（重试、回退、回滚等）
+ * 3. 错误信息脱敏
+ * 4. 错误日志与统计
+ */
+
 import { toolRegistry } from '../tools/registry.js';
 
-export type ErrorType = 
-  | 'tool_timeout'
-  | 'tool_not_found'
-  | 'validation_error'
-  | 'execution_error'
-  | 'dependency_error'
-  | 'skill_not_found'
-  | 'unknown_error';
+// 从子模块导入类型
+import type {
+  ErrorType,
+  ErrorRecovery,
+  ErrorRecord,
+  SafeErrorResponse,
+  TaskContext,
+} from './error-types.js';
 
-export interface ErrorRecovery {
-  action: 'retry' | 'fallback' | 'switch_tool' | 'rollback' | 'request_input' | 'skip' | 'fail';
-  delay?: number;
-  fallbackTool?: { serverId: string; toolId: string };
-  switchToTool?: { serverId: string; toolId: string };
-  stepId?: string;
-  message?: string;
-}
-
-export interface ErrorRecord {
-  timestamp: Date;
-  errorType: ErrorType;
-  message: string;
-  context: {
-    id: string;
-    description: string;
-    complexity?: string;
-    currentSkill?: string;
-    history: any[];
-    results: Record<string, any>;
-  };
-  stack?: string;
-}
-
-export interface SafeErrorResponse {
-  success: boolean;
-  error: string;
-  code?: string;
-  timestamp: string;
-}
-
-export interface TaskContext {
-  id: string;
-  description: string;
-  complexity?: string;
-  currentSkill?: string;
-  history: any[];
-  results: Record<string, any>;
-}
+// Re-export 所有类型
+export type {
+  ErrorType,
+  ErrorRecovery,
+  ErrorRecord,
+  SafeErrorResponse,
+  TaskContext,
+};
 
 export class ErrorHandler {
   private errorLog: ErrorRecord[] = [];
@@ -79,7 +58,7 @@ export class ErrorHandler {
 
   formatSafeError(error: Error): SafeErrorResponse {
     const type = this.classifyError(error);
-    
+
     return {
       success: false,
       error: this.sanitizeErrorMessage(this.showDetailedErrors ? error.message : 'An error occurred'),
@@ -90,7 +69,7 @@ export class ErrorHandler {
 
   async handle(error: Error, context: TaskContext): Promise<ErrorRecovery> {
     const errorType = this.classifyError(error);
-    
+
     this.logError(error, errorType, context);
 
     switch (errorType) {
@@ -120,7 +99,7 @@ export class ErrorHandler {
     if (message.includes('dependency') || message.includes('depend')) return 'dependency_error';
     if (message.includes('skill') && message.includes('not found')) return 'skill_not_found';
     if (message.includes('execution') || message.includes('failed')) return 'execution_error';
-    
+
     return 'unknown_error';
   }
 
@@ -177,7 +156,7 @@ export class ErrorHandler {
     const { listTools } = require('../tools/registry.js');
     const tools = listTools();
     const keywords = description.toLowerCase().split(/\s+/);
-    
+
     return tools
       .filter((tool: any) => {
         const toolLower = tool.name.toLowerCase();

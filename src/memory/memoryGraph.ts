@@ -1,80 +1,32 @@
 import path from 'path';
 import fs from 'fs/promises';
-import crypto from 'crypto';
 import { MEMORY_DIR } from '../utils/index.js';
+import type {
+  NodeType,
+  EdgeType,
+  MemoryNode,
+  MemoryEdge,
+  GraphData,
+  SearchResult,
+  GraphStats,
+  ContextResult,
+} from './graph-types.js';
+import { generateId, tokenize, computeRelevance, isExpired } from './graph-utils.js';
 
-// ============================================================
-// 类型定义
-// ============================================================
+// Re-export 类型
+export type {
+  NodeType,
+  EdgeType,
+};
 
-/** 节点类型 */
-export type NodeType = 'fact' | 'experience' | 'preference' | 'relation';
-
-/** 边类型 */
-export type EdgeType = 'related_to' | 'derived_from' | 'contradicts';
-
-/** 记忆节点 */
-export interface MemoryNode {
-  /** 唯一标识 */
-  id: string;
-  /** 节点类型 */
-  type: NodeType;
-  /** 节点内容 */
-  content: string;
-  /** 重要性 (0-1) */
-  importance: number;
-  /** 标签 */
-  tags: string[];
-  /** 创建时间 (ISO 字符串) */
-  createdAt: string;
-  /** 最后访问时间 (ISO 字符串) */
-  accessedAt: string;
-  /** 过期时间 (ISO 字符串)，可选 */
-  expiresAt?: string;
-}
-
-/** 记忆边 */
-export interface MemoryEdge {
-  /** 起始节点 ID */
-  from: string;
-  /** 目标节点 ID */
-  to: string;
-  /** 边类型 */
-  type: EdgeType;
-  /** 关系强度 (0-1) */
-  strength: number;
-}
-
-/** 持久化数据结构 */
-export interface GraphData {
-  nodes: Record<string, MemoryNode>;
-  edges: MemoryEdge[];
-  version: string;
-}
-
-/** 搜索结果 */
-export interface SearchResult {
-  node: MemoryNode;
-  score: number;
-}
-
-/** 统计信息 */
-export interface GraphStats {
-  totalNodes: number;
-  totalEdges: number;
-  nodesByType: Record<NodeType, number>;
-  edgesByType: Record<EdgeType, number>;
-  averageImportance: number;
-  expiredNodes: number;
-  storagePath: string;
-}
-
-/** 上下文查询结果 */
-export interface ContextResult {
-  nodes: MemoryNode[];
-  edges: MemoryEdge[];
-  query: string;
-}
+export type {
+  MemoryNode,
+  MemoryEdge,
+  GraphData,
+  SearchResult,
+  GraphStats,
+  ContextResult,
+};
 
 // ============================================================
 // 常量
@@ -88,64 +40,6 @@ const GRAPH_VERSION = '1.0.0';
 const DECAY_FACTOR = 0.95;
 /** 低于此重要性阈值的节点将被清理 */
 const IMPORTANCE_THRESHOLD = 0.05;
-
-// ============================================================
-// 工具函数
-// ============================================================
-
-/**
- * 生成唯一 ID
- */
-function generateId(): string {
-  return `mg-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-}
-
-/**
- * 简单分词：英文按空格，中文提取 2-4 字子串
- * 与 manager.ts 中的 tokenize 方法保持一致
- */
-function tokenize(text: string): string[] {
-  const tokens: string[] = [];
-  // 英文词
-  const englishWords = text.match(/[a-zA-Z0-9]+/g);
-  if (englishWords) tokens.push(...englishWords.map(w => w.toLowerCase()));
-  // 中文字符提取 2-4 字子串
-  const chineseChars = text.match(/[\u4e00-\u9fa5]+/g);
-  if (chineseChars) {
-    for (const segment of chineseChars) {
-      if (segment.length >= 2) tokens.push(segment); // 整段
-      if (segment.length >= 4) {
-        // 2字窗口
-        for (let i = 0; i <= segment.length - 2; i++) {
-          tokens.push(segment.substring(i, i + 2));
-        }
-      }
-    }
-  }
-  return tokens;
-}
-
-/**
- * 计算两个文本的相关性得分
- */
-function computeRelevance(queryTokens: string[], content: string): number {
-  const lowerContent = content.toLowerCase();
-  let score = 0;
-  for (const kw of queryTokens) {
-    if (kw.length < 2) continue; // 跳过单字符
-    const occurrences = lowerContent.split(kw).length - 1;
-    if (occurrences > 0) score += occurrences * (kw.length >= 4 ? 2 : 1); // 长词权重更高
-  }
-  return score;
-}
-
-/**
- * 判断节点是否已过期
- */
-function isExpired(node: MemoryNode): boolean {
-  if (!node.expiresAt) return false;
-  return new Date(node.expiresAt).getTime() < Date.now();
-}
 
 // ============================================================
 // MemoryGraph 类
@@ -320,7 +214,7 @@ export class MemoryGraph {
   }
 
   /**
-   * 秠除两个节点之间的边
+   * 删除两个节点之间的边
    */
   async unlinkNodes(fromId: string, toId: string): Promise<boolean> {
     await this.init();

@@ -1,70 +1,34 @@
-export interface Decision {
-  id: string;
-  taskId: string;
-  description: string;
-  context: Record<string, any>;
-  alternatives: Alternative[];
-  chosenAlternative: string;
-  rationale: string;
-  confidence: number;
-  timestamp: Date;
-  outcome?: DecisionOutcome;
-}
+/**
+ * 决策反思器模块
+ *
+ * 提供 Agent 决策的记录、反思和改进建议能力，包括：
+ * 1. 决策记录 - 记录每次决策的上下文、备选方案和选择理由
+ * 2. 结果追踪 - 追踪决策的实际执行结果
+ * 3. 任务反思 - 对任务执行过程进行综合反思
+ * 4. 改进建议 - 基于历史决策生成改进建议
+ */
 
-export interface Alternative {
-  id: string;
-  description: string;
-  pros: string[];
-  cons: string[];
-  risk: number;
-  benefits: number;
-}
+// 从子模块导入类型
+import type {
+  Decision,
+  Alternative,
+  DecisionOutcome,
+  Reflection,
+  ImprovementSuggestion,
+  ReflectionQuery,
+  DecisionStats,
+} from './decision-types.js';
 
-export interface DecisionOutcome {
-  success: boolean;
-  actualResult: string;
-  expectedResult: string;
-  gapAnalysis: string;
-  lessonsLearned: string[];
-  timestamp: Date;
-}
-
-export interface Reflection {
-  id: string;
-  taskId: string;
-  taskDescription: string;
-  executionSummary: string;
-  decisions: Decision[];
-  successes: string[];
-  failures: string[];
-  improvements: ImprovementSuggestion[];
-  overallRating: number;
-  timestamp: Date;
-}
-
-export interface ImprovementSuggestion {
-  id: string;
-  category: 'process' | 'tool' | 'skill' | 'workflow' | 'other';
-  priority: 'high' | 'medium' | 'low';
-  description: string;
-  recommendation: string;
-  estimatedImpact: number;
-}
-
-export interface ReflectionQuery {
-  taskId?: string;
-  skillName?: string;
-  dateRange?: { start: Date; end: Date };
-  successThreshold?: number;
-}
-
-export interface DecisionStats {
-  totalDecisions: number;
-  avgConfidence: number;
-  successRate: number;
-  mostCommonCategories: string[];
-  improvementOpportunities: number;
-}
+// Re-export 所有类型
+export type {
+  Decision,
+  Alternative,
+  DecisionOutcome,
+  Reflection,
+  ImprovementSuggestion,
+  ReflectionQuery,
+  DecisionStats,
+};
 
 export class DecisionReflector {
   private decisions: Map<string, Decision> = new Map();
@@ -93,7 +57,7 @@ export class DecisionReflector {
     };
 
     this.decisions.set(decision.id, decision);
-    
+
     if (!this.taskDecisions.has(taskId)) {
       this.taskDecisions.set(taskId, []);
     }
@@ -161,7 +125,7 @@ export class DecisionReflector {
           successes.push(`成功: ${decision.description}`);
         } else {
           failures.push(`失败: ${decision.description} - ${decision.outcome.gapAnalysis}`);
-          
+
           improvements.push({
             id: `imp-${decision.id}`,
             category: this.inferCategory(decision),
@@ -179,12 +143,12 @@ export class DecisionReflector {
 
   private inferCategory(decision: Decision): ImprovementSuggestion['category'] {
     const keywords = decision.description.toLowerCase();
-    
+
     if (keywords.includes('tool') || keywords.includes('工具')) return 'tool';
     if (keywords.includes('skill') || keywords.includes('技能')) return 'skill';
     if (keywords.includes('workflow') || keywords.includes('流程')) return 'workflow';
     if (keywords.includes('process') || keywords.includes('过程')) return 'process';
-    
+
     return 'other';
   }
 
@@ -194,15 +158,15 @@ export class DecisionReflector {
     }
 
     const issues: string[] = [];
-    
+
     if (decision.confidence < 0.7) {
       issues.push('提高决策前的信息收集质量');
     }
-    
+
     if (decision.alternatives.length < 3) {
       issues.push('考虑更多备选方案');
     }
-    
+
     if (decision.outcome.gapAnalysis) {
       issues.push(`解决: ${decision.outcome.gapAnalysis}`);
     }
@@ -216,11 +180,11 @@ export class DecisionReflector {
 
   private estimateImpact(decision: Decision): number {
     if (!decision.outcome) return 0.5;
-    
+
     const confidenceFactor = decision.confidence;
     const outcomeFactor = decision.outcome.success ? 0.3 : 0.7;
     const gapSeverity = decision.outcome.gapAnalysis.length > 50 ? 0.2 : 0;
-    
+
     return Math.min(1, confidenceFactor * outcomeFactor + gapSeverity);
   }
 
@@ -252,8 +216,8 @@ export class DecisionReflector {
     }
 
     if (query?.dateRange && query.dateRange.start && query.dateRange.end) {
-      results = results.filter(r => 
-        r.timestamp >= query.dateRange!.start && 
+      results = results.filter(r =>
+        r.timestamp >= query.dateRange!.start &&
         r.timestamp <= query.dateRange!.end
       );
     }
@@ -292,7 +256,7 @@ export class DecisionReflector {
       .slice(0, 3)
       .map(([cat]) => cat);
 
-    const improvementOpportunities = decisions.filter(d => 
+    const improvementOpportunities = decisions.filter(d =>
       d.outcome?.success === false || d.confidence < 0.7
     ).length;
 
@@ -310,7 +274,7 @@ export class DecisionReflector {
   async generateImprovementReport(): Promise<string> {
     const stats = await this.getStats();
     const reflections = await this.getReflections();
-    
+
     const highPriorityImprovements: ImprovementSuggestion[] = [];
     for (const reflection of reflections) {
       highPriorityImprovements.push(

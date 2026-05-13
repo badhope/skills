@@ -8,26 +8,38 @@
  * 4. 快照与回滚 - 支持将文件恢复到修改前的状态
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import crypto from 'node:crypto';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import { BACKUP_DIR } from '../utils/index.js';
 
-// ==================== 枚举与接口 ====================
+// 从子模块导入风险规则与评估
+import {
+  RiskLevel,
+  RISK_LEVEL_WEIGHT,
+  RISK_LEVEL_LABEL,
+  RISK_LEVEL_STYLE,
+  RISK_RULES,
+  assessRisk,
+} from './risk-rules.js';
+import type { ChangeAction } from './risk-rules.js';
 
-/**
- * 风险级别枚举
- * 从 NEGLIGIBLE 到 CRITICAL 递增，级别越高风险越大
- */
-export enum RiskLevel {
-  NEGLIGIBLE = 'negligible',   // 可忽略（读操作）
-  LOW = 'low',                 // 低风险（创建新文件）
-  MEDIUM = 'medium',           // 中风险（修改现有文件）
-  HIGH = 'high',               // 高风险（修改配置文件/系统文件）
-  CRITICAL = 'critical',       // 危险（删除文件/批量修改）
-}
+// 从子模块导入备份与回滚
+import { backupFile, createSnapshot, rollback } from './backup.js';
+
+// Re-export 风险规则模块的公共接口
+export {
+  RiskLevel,
+  RISK_LEVEL_WEIGHT,
+  RISK_LEVEL_LABEL,
+  RISK_LEVEL_STYLE,
+  RISK_RULES,
+  assessRisk,
+};
+
+// Re-export 备份模块的公共接口
+export { backupFile, createSnapshot, rollback };
+
+// ==================== 接口 ====================
 
 /**
  * 变更记录接口
@@ -54,312 +66,7 @@ export interface ChangeRecord {
   snapshot?: string;
 }
 
-// ==================== 风险规则常量 ====================
-
-/**
- * 风险级别的数值权重，用于比较和聚合
- */
-const RISK_LEVEL_WEIGHT: Record<RiskLevel, number> = {
-  [RiskLevel.NEGLIGIBLE]: 0,
-  [RiskLevel.LOW]: 1,
-  [RiskLevel.MEDIUM]: 2,
-  [RiskLevel.HIGH]: 3,
-  [RiskLevel.CRITICAL]: 4,
-};
-
-/**
- * 风险级别的中文标签
- */
-const RISK_LEVEL_LABEL: Record<RiskLevel, string> = {
-  [RiskLevel.NEGLIGIBLE]: '可忽略',
-  [RiskLevel.LOW]: '低风险',
-  [RiskLevel.MEDIUM]: '中风险',
-  [RiskLevel.HIGH]: '高风险',
-  [RiskLevel.CRITICAL]: '危险',
-};
-
-/**
- * 风险级别的 chalk 颜色样式
- */
-const RISK_LEVEL_STYLE: Record<RiskLevel, (text: string) => string> = {
-  [RiskLevel.NEGLIGIBLE]: chalk.gray,
-  [RiskLevel.LOW]: chalk.green,
-  [RiskLevel.MEDIUM]: chalk.yellow,
-  [RiskLevel.HIGH]: chalk.hex('#FFA500'),
-  [RiskLevel.CRITICAL]: chalk.red.bold,
-};
-
-/**
- * 预定义的风险规则列表
- *
- * 规则按优先级排列，后面的规则如果匹配到更高风险等级，会覆盖前面的结果。
- * 每条规则包含：
- * - pattern: 匹配目标路径或命令的正则表达式
- * - action: 适用的操作类型列表
- * - risk: 匹配时的风险等级
- * - reason: 风险原因说明
- */
-export const RISK_RULES: Array<{
-  pattern: RegExp;
-  action: string[];
-  risk: RiskLevel;
-  reason: string;
-}> = [
-  // 读操作 - 可忽略
-  { pattern: /.*/, action: ['read'], risk: RiskLevel.NEGLIGIBLE, reason: '读取操作无风险' },
-
-  // 创建新文件 - 低风险
-  { pattern: /.*/, action: ['create'], risk: RiskLevel.LOW, reason: '创建新文件' },
-
-  // 修改操作 - 中风险（默认）
-  { pattern: /.*/, action: ['modify'], risk: RiskLevel.MEDIUM, reason: '修改现有文件' },
-
-  // 移动操作 - 中风险
-  { pattern: /.*/, action: ['move'], risk: RiskLevel.MEDIUM, reason: '移动文件' },
-
-  // 删除操作 - 危险
-  { pattern: /.*/, action: ['delete'], risk: RiskLevel.CRITICAL, reason: '删除文件' },
-
-  // 系统文件 - 高风险（修改或删除时）
-  { pattern: /(\/etc\/|\/usr\/|\/bin\/|\/sbin\/|C:\\Windows|C:\\Program)/i, action: ['modify', 'delete'], risk: RiskLevel.CRITICAL, reason: '系统关键文件' },
-
-  // 配置文件 - 高风险（修改或删除时）
-  { pattern: /\.(json|yaml|yml|toml|ini|conf|cfg|env)$/i, action: ['modify', 'delete'], risk: RiskLevel.HIGH, reason: '配置文件修改' },
-
-  // node_modules - 低风险（可恢复）
-  { pattern: /node_modules/, action: ['modify', 'delete'], risk: RiskLevel.LOW, reason: '依赖目录，可恢复' },
-
-  // .git 目录 - 高风险（修改或删除时）
-  { pattern: /\.git/, action: ['modify', 'delete'], risk: RiskLevel.CRITICAL, reason: 'Git 版本控制目录' },
-
-  // shell 命令 - 根据内容评估
-  { pattern: /rm\s+-rf|del\s+\/s/i, action: ['shell'], risk: RiskLevel.CRITICAL, reason: '强制删除命令' },
-  { pattern: /DROP\s+TABLE|TRUNCATE/i, action: ['shell'], risk: RiskLevel.CRITICAL, reason: '数据库破坏性命令' },
-  { pattern: /sudo|admin/i, action: ['shell'], risk: RiskLevel.HIGH, reason: '需要管理员权限' },
-  { pattern: /npm\s+install|yarn|pnpm/i, action: ['shell'], risk: RiskLevel.LOW, reason: '包安装命令' },
-  { pattern: /npm\s+run|yarn\s+run/i, action: ['shell'], risk: RiskLevel.LOW, reason: '脚本运行命令' },
-  { pattern: /git\s+(commit|push|merge|rebase)/i, action: ['shell'], risk: RiskLevel.MEDIUM, reason: 'Git 写操作' },
-  { pattern: /docker\s+(build|run|push)/i, action: ['shell'], risk: RiskLevel.MEDIUM, reason: 'Docker 操作' },
-];
-
-// ==================== 核心函数 ====================
-
-/**
- * 风险评估 - 根据操作类型和目标评估风险等级
- *
- * 遍历所有预定义的风险规则，找到匹配的规则并返回最高风险等级。
- * 支持多条规则同时匹配，最终取风险最高的结果。
- *
- * @param action - 操作类型（read/create/modify/delete/move/shell）
- * @param target - 操作目标（文件路径或 shell 命令）
- * @returns 风险评估结果，包含风险等级、原因和匹配的规则列表
- *
- * @example
- * ```typescript
- * const result = assessRisk('delete', '/etc/config.yaml');
- * // result.risk === RiskLevel.CRITICAL
- * // result.reason 包含 '删除文件' 和 '系统关键文件' 等原因
- * ```
- */
-export function assessRisk(
-  action: ChangeRecord['action'],
-  target: string
-): { risk: RiskLevel; reason: string; rules: string[] } {
-  let maxRisk = RiskLevel.NEGLIGIBLE;
-  const matchedRules: string[] = [];
-  const reasons: string[] = [];
-
-  for (const rule of RISK_RULES) {
-    // 检查操作类型是否匹配
-    if (!rule.action.includes(action)) {
-      continue;
-    }
-
-    // 检查目标是否匹配正则
-    if (!rule.pattern.test(target)) {
-      continue;
-    }
-
-    // 记录匹配的规则
-    matchedRules.push(rule.reason);
-    reasons.push(rule.reason);
-
-    // 取最高风险等级
-    if (RISK_LEVEL_WEIGHT[rule.risk] > RISK_LEVEL_WEIGHT[maxRisk]) {
-      maxRisk = rule.risk;
-    }
-  }
-
-  // 如果没有匹配到任何规则，默认为中风险
-  if (matchedRules.length === 0) {
-    return {
-      risk: RiskLevel.MEDIUM,
-      reason: '未匹配到已知规则，默认中风险',
-      rules: ['默认规则'],
-    };
-  }
-
-  return {
-    risk: maxRisk,
-    reason: reasons.join('；'),
-    rules: matchedRules,
-  };
-}
-
-/**
- * 文件备份 - 将文件复制到备份目录
- *
- * 在 `~/.devflow/backups/` 目录下创建备份文件。
- * 备份文件名格式：`原文件名_时间戳.bak`
- * 如果源文件不存在，返回成功但不创建备份。
- *
- * @param filePath - 需要备份的文件路径
- * @returns 备份结果，包含是否成功、备份路径或错误信息
- *
- * @example
- * ```typescript
- * const result = await backupFile('/project/config.json');
- * if (result.success) {
- *   console.log(`备份已创建: ${result.backupPath}`);
- * }
- * ```
- */
-export async function backupFile(
-  filePath: string
-): Promise<{ success: boolean; backupPath?: string; error?: string }> {
-  try {
-    // 检查源文件是否存在
-    try {
-      await fs.access(filePath);
-    } catch {
-      // 文件不存在，返回成功但不创建备份
-      return { success: true };
-    }
-
-    // 构建备份目录路径
-    const backupDir = BACKUP_DIR;
-    await fs.mkdir(backupDir, { recursive: true });
-
-    // 构建备份文件名：原文件名_时间戳.bak
-    const parsedPath = path.parse(filePath);
-    const timestamp = Date.now();
-    const backupFileName = `${parsedPath.name}_${timestamp}.bak`;
-    const backupFilePath = path.join(backupDir, backupFileName);
-
-    // 复制文件到备份目录
-    await fs.copyFile(filePath, backupFilePath);
-
-    return {
-      success: true,
-      backupPath: backupFilePath,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: `备份失败: ${errorMessage}`,
-    };
-  }
-}
-
-/**
- * 创建快照 - 读取文件当前内容作为快照
- *
- * 快照用于后续回滚操作，将文件内容保存在内存中。
- * 如果文件不存在，返回 null。
- *
- * @param filePath - 需要创建快照的文件路径
- * @returns 文件内容字符串，文件不存在时返回 null
- *
- * @example
- * ```typescript
- * const snapshot = await createSnapshot('/project/config.json');
- * if (snapshot !== null) {
- *   // 快照已创建，可以用于后续回滚
- *   console.log(`快照大小: ${snapshot.length} 字节`);
- * }
- * ```
- */
-export async function createSnapshot(filePath: string): Promise<string | null> {
-  try {
-    const stat = await fs.stat(filePath);
-    const MAX_SNAPSHOT_SIZE = 10 * 1024 * 1024; // 10MB
-    if (stat.size > MAX_SNAPSHOT_SIZE) {
-      return null;
-    }
-
-    const content = await fs.readFile(filePath, 'utf-8');
-    return content;
-  } catch {
-    // 文件不存在或无法读取
-    return null;
-  }
-}
-
-/**
- * 回滚 - 将文件恢复到修改前的状态
- *
- * 使用变更记录中保存的快照内容，将文件恢复到修改前的状态。
- * 如果没有快照，则尝试从备份路径恢复。
- *
- * @param change - 变更记录，包含快照或备份路径
- * @returns 回滚结果，包含是否成功或错误信息
- *
- * @example
- * ```typescript
- * const result = await rollback(changeRecord);
- * if (result.success) {
- *   console.log('文件已回滚到修改前的状态');
- * }
- * ```
- */
-export async function rollback(
-  change: ChangeRecord
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // 优先使用快照回滚
-    if (change.snapshot !== undefined) {
-      // 确保目标文件所在目录存在
-      const targetDir = path.dirname(change.target);
-      await fs.mkdir(targetDir, { recursive: true });
-
-      // 将快照内容写入目标文件
-      await fs.writeFile(change.target, change.snapshot, 'utf-8');
-      return { success: true };
-    }
-
-    // 其次尝试从备份路径恢复
-    if (change.backupPath) {
-      try {
-        await fs.access(change.backupPath);
-      } catch {
-        return {
-          success: false,
-          error: `备份文件不存在: ${change.backupPath}`,
-        };
-      }
-
-      // 确保目标文件所在目录存在
-      const targetDir = path.dirname(change.target);
-      await fs.mkdir(targetDir, { recursive: true });
-
-      // 从备份复制回目标文件
-      await fs.copyFile(change.backupPath, change.target);
-      return { success: true };
-    }
-
-    return {
-      success: false,
-      error: '没有可用的快照或备份，无法回滚',
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: `回滚失败: ${errorMessage}`,
-    };
-  }
-}
+// ==================== 内部工具函数 ====================
 
 /**
  * 生成唯一 ID

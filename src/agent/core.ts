@@ -1,234 +1,25 @@
-import { configManager } from '../config/manager.js';
-import { toolRegistry, executeTool } from '../tools/registry.js';
+import { toolRegistry } from '../tools/registry.js';
 import { memoryManager } from '../memory/manager.js';
 import { reasonStep } from './reasoner.js';
-import { detectIssues, generateTrustReport, shouldRequireConfirmation, askUserConfirmation, formatTrustOutput, TrustLevel } from './trust.js';
+import { detectIssues, generateTrustReport, askUserConfirmation, TrustLevel } from './trust.js';
 import { ContextManager } from './context-manager.js';
+import { DirtyProtect, AutoCommitEngine, CheckpointManager } from '../git/index.js';
 import chalk from 'chalk';
-import { printSection, printSuccess, printError, printWarning, printInfo, createSpinner } from '../ui/logo.js';
-import { printSteps } from '../ui/display.js';
+import type { TaskStep, Task } from './types.js';
 
-/**
- * Agent 核心循环
- * 理解 → 规划 → 执行 → 验证 → 反思
- */
+// Re-export 类型
+export type { TaskStep, Task } from './types.js';
 
-export interface TaskStep {
-  id: number;
-  description: string;
-  tool?: string;
-  args?: Record<string, unknown>;
-  status: 'pending' | 'running' | 'done' | 'error' | 'skipped';
-  result?: string;
-  error?: string;
-}
+// Re-export 提取的函数（向后兼容）
+export { recognizeIntent } from './intent-recognizer.js';
+export { planTask } from './task-planner.js';
+export { executeStep } from './step-executor.js';
 
-export interface Task {
-  id: string;
-  userInput: string;
-  intent?: string;
-  steps: TaskStep[];
-  currentStep: number;
-  status: 'planning' | 'executing' | 'completed' | 'failed';
-  result?: string;
-  startedAt: number;
-  completedAt?: number;
-}
-
-/**
- * 意图识别
- */
-export function recognizeIntent(input: string): {
-  intent: string;
-  confidence: number;
-  suggestedTools: string[];
-} {
-  const lower = input.toLowerCase();
-
-  if (/(debug|bug|error|issue|fix|修复|调试|错误|问题)/.test(lower)) {
-    return { intent: 'bug-hunter', confidence: 0.9, suggestedTools: ['search_files', 'read_file'] };
-  }
-
-  if (/(implement|build|create|develop|新建|构建|创建|实现|component|组件|写|生成|添加)/.test(lower) ||
-      /(react|vue|angular|nextjs|nuxt|html|css|js|typescript|node|python|rust|go)/.test(lower) ||
-      /(\.py|\.ts|\.js|\.tsx|\.jsx|\.html|\.css|\.json|\.yaml|\.yml|\.md)/.test(lower)) {
-    return { intent: 'fullstack', confidence: 0.85, suggestedTools: ['write_file', 'read_file', 'shell'] };
-  }
-
-  if (/(test|testing|测试|单元|运行测试|unit test|jest|vitest)/.test(lower)) {
-    return { intent: 'testing', confidence: 0.9, suggestedTools: ['shell', 'read_file', 'write_file'] };
-  }
-
-  // 代码审查
-  if (/(code review|pr review|代码审查|review|评审|审查代码|审查)/.test(lower)) {
-    return { intent: 'code-review', confidence: 0.9, suggestedTools: ['read_file', 'search_files'] };
-  }
-
-  // 数据库任务（优先于重构）
-  if (/(database|db|sql|mysql|postgres|mongodb|redis|数据库|查询|query)/.test(lower)) {
-    return { intent: 'database', confidence: 0.9, suggestedTools: ['shell', 'read_file'] };
-  }
-
-  // 重构/优化
-  if (/(refactor|重构|optimize|优化|improve|改进)/.test(lower)) {
-    return { intent: 'refactor', confidence: 0.85, suggestedTools: ['read_file', 'write_file', 'search_files'] };
-  }
-
-  // 安全审计
-  if (/(security|vulnerability|安全|漏洞|审计|audit)/.test(lower)) {
-    return { intent: 'security', confidence: 0.9, suggestedTools: ['read_file', 'search_files', 'shell'] };
-  }
-
-  // 文档任务
-  if (/(document|doc|readme|文档|说明)/.test(lower)) {
-    return { intent: 'documentation', confidence: 0.85, suggestedTools: ['read_file', 'write_file'] };
-  }
-
-  // 部署任务
-  if (/(deploy|部署|docker|kubernetes|k8s|ci\/cd|ci-cd|cicd)/.test(lower)) {
-    return { intent: 'devops', confidence: 0.9, suggestedTools: ['shell'] };
-  }
-
-  // 搜索文件
-  if (/(search|find|grep|搜索|查找)/.test(lower)) {
-    return { intent: 'search', confidence: 0.9, suggestedTools: ['search_files', 'read_file'] };
-  }
-
-  // 通用对话
-  return { intent: 'chat', confidence: 0.5, suggestedTools: [] };
-}
-
-/**
- * 任务规划器 - 将用户输入分解为可执行步骤
- */
-export async function planTask(userInput: string, intent: string): Promise<TaskStep[]> {
-  const steps: TaskStep[] = [];
-  const lower = userInput.toLowerCase();
-
-  // === 理解任务 ===
-  steps.push({
-    id: steps.length + 1,
-    description: `理解任务: "${userInput.slice(0, 50)}${userInput.length > 50 ? '...' : ''}"`,
-    status: 'done',
-    result: `识别为 ${intent} 类型任务`,
-  });
-
-  // === 分解任务 ===
-  // 根据意图类型分解
-  switch (intent) {
-    case 'bug-hunter':
-      // 调试类任务
-      steps.push({ id: steps.length + 1, description: '定位问题位置', tool: 'search_files', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '分析错误原因', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '制定修复方案', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '执行修复', tool: 'write_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '验证修复效果', status: 'pending' });
-      break;
-
-    case 'fullstack':
-    case 'documentation':
-      // 开发/文档类任务
-      steps.push({ id: steps.length + 1, description: '确认目标路径', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '生成内容', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '写入文件', tool: 'write_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '验证写入结果', tool: 'read_file', status: 'pending' });
-      break;
-
-    case 'code-review':
-      // 审查类任务
-      steps.push({ id: steps.length + 1, description: '读取代码内容', tool: 'read_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '代码质量分析', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '生成审查报告', status: 'pending' });
-      break;
-
-    case 'search':
-      // 搜索类任务
-      if (/在|文件|folder|目录|project/.test(lower)) {
-        steps.push({ id: steps.length + 1, description: '定位目标文件/目录', tool: 'read_file', status: 'pending' });
-      }
-      steps.push({ id: steps.length + 1, description: '执行关键词搜索', tool: 'search_files', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '分析搜索结果', status: 'pending' });
-      break;
-
-    case 'devops':
-      // 部署类任务
-      steps.push({ id: steps.length + 1, description: '检查环境配置', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '执行部署命令', tool: 'shell', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '验证部署结果', status: 'pending' });
-      break;
-
-    case 'testing':
-      // 测试类任务
-      steps.push({ id: steps.length + 1, description: '分析测试需求', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '执行测试', tool: 'shell', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '分析测试结果', status: 'pending' });
-      break;
-
-    case 'refactor':
-      // 重构类任务
-      steps.push({ id: steps.length + 1, description: '读取代码内容', tool: 'read_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '识别代码坏味道', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '制定重构方案', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '执行重构', tool: 'write_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '验证重构结果', status: 'pending' });
-      break;
-
-    case 'security':
-      // 安全审计类任务
-      steps.push({ id: steps.length + 1, description: '读取代码内容', tool: 'read_file', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '扫描安全漏洞', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '生成安全报告', status: 'pending' });
-      break;
-
-    case 'database':
-      // 数据库类任务
-      steps.push({ id: steps.length + 1, description: '分析数据库需求', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '执行数据库命令', tool: 'shell', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '验证执行结果', status: 'pending' });
-      break;
-
-    default:
-      // 通用对话任务
-      steps.push({ id: steps.length + 1, description: '分析用户需求', status: 'pending' });
-      steps.push({ id: steps.length + 1, description: '生成回答', status: 'pending' });
-      break;
-  }
-
-  // === 反思步骤 ===
-  steps.push({ id: steps.length + 1, description: '反思执行过程，总结经验', status: 'pending' });
-
-  return steps;
-}
-
-/**
- * 工具执行器
- */
-export async function executeStep(step: TaskStep, context: Record<string, unknown>): Promise<string> {
-  if (!step.tool) {
-    return `（手动步骤）${step.description}`;
-  }
-  try {
-    const args: Record<string, string> = {};
-    if (step.args) {
-      for (const [key, value] of Object.entries(step.args)) {
-        args[key] = String(value ?? '');
-      }
-    }
-    const result = await executeTool(step.tool, args);
-    if (typeof result === 'string') return result;
-    // 处理 ToolResult 对象
-    if (result && typeof result === 'object' && 'output' in result) {
-      const toolResult = result as { success?: boolean; output?: string; error?: string };
-      if (toolResult.success === false) {
-        throw new Error(toolResult.error || `工具 ${step.tool} 执行失败`);
-      }
-      return toolResult.output || JSON.stringify(result, null, 2);
-    }
-    return JSON.stringify(result, null, 2);
-  } catch (error) {
-    throw new Error(`工具 ${step.tool} 执行失败: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
+// 导入提取的函数供内部使用
+import { recognizeIntent } from './intent-recognizer.js';
+import { planTask } from './task-planner.js';
+import { executeStep } from './step-executor.js';
+import { parseToolArgsFromAI, generateSummary } from './agent-utils.js';
 
 /**
  * Agent 执行器 - 运行完整的 Agent 循环
@@ -238,6 +29,9 @@ export class AgentExecutor {
   private onStepChange?: (step: TaskStep) => void;
   private onOutput?: (text: string) => void;
   private contextManager: ContextManager;
+  private dirtyProtect: DirtyProtect;
+  private autoCommit: AutoCommitEngine;
+  private changedFiles: string[] = [];
 
   constructor(
     userInput: string,
@@ -255,10 +49,20 @@ export class AgentExecutor {
     this.onStepChange = onStepChange;
     this.onOutput = onOutput;
     this.contextManager = new ContextManager(8000);
+    this.dirtyProtect = new DirtyProtect(process.cwd());
+    this.autoCommit = new AutoCommitEngine(process.cwd());
   }
 
   async run(): Promise<Task> {
     try {
+      // === 阶段 0: Git 检查点 ===
+      try {
+        const checkpoint = new CheckpointManager(process.cwd());
+        await checkpoint.create(`执行前自动检查点: ${this.task.userInput.substring(0, 50)}`);
+      } catch {
+        // 非 Git 仓库时静默跳过
+      }
+
       // === 阶段 1: 理解 ===
       this.output(chalk.dim('[1/5] 理解任务...'));
       const { intent } = recognizeIntent(this.task.userInput);
@@ -298,12 +102,17 @@ export class AgentExecutor {
                 previousResults: previousContext.map(m => m.content),
                 availableTools: [step.tool],
               });
-              step.args = this.parseToolArgsFromAI(step.tool, paramReasoning);
+              step.args = parseToolArgsFromAI(step.tool, paramReasoning);
             }
             this.output(chalk.dim(`  → 执行工具: ${chalk.cyan(step.tool)} ${step.args ? JSON.stringify(step.args) : ''}...`));
             step.result = await executeStep(step, context);
             this.output(chalk.green(`  ✓ 完成: ${step.description}`));
             this.contextManager.addToolResult(step.tool, step.result, true);
+
+            // 追踪文件变更（用于自动提交）
+            if (step.tool === 'write_file' && step.args?.path) {
+              this.changedFiles.push(String(step.args.path));
+            }
           } else if (step.description.includes('反思')) {
             // 反思步骤 → 跳过（后面统一处理）
             step.result = '(反思步骤将在最后统一处理)';
@@ -404,7 +213,7 @@ export class AgentExecutor {
         this.output(chalk.green('  ✓ 反思完成'));
       }
 
-      const summary = this.generateSummary();
+      const summary = generateSummary(this.task);
       this.output(chalk.bold('\n📊 执行总结:'));
       this.output(summary);
 
@@ -413,6 +222,21 @@ export class AgentExecutor {
 
       // 保存到记忆
       await this.saveToMemory(summary);
+
+      // === Git 自动提交 ===
+      if (this.changedFiles.length > 0) {
+        try {
+          const result = await this.autoCommit.autoCommit(
+            this.changedFiles,
+            this.task.userInput
+          );
+          if (result.success) {
+            this.output(chalk.dim(`  📝 ${result.message}`));
+          }
+        } catch {
+          // Git 操作失败不影响任务结果
+        }
+      }
 
       return this.task;
     } catch (error) {
@@ -425,30 +249,6 @@ export class AgentExecutor {
   private output(text: string): void {
     console.log(text);
     this.onOutput?.(text);
-  }
-
-  private parseToolArgsFromAI(toolName: string, aiResponse: string): Record<string, unknown> {
-    const jsonBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = jsonBlockMatch ? jsonBlockMatch[1] : aiResponse;
-    const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (braceMatch) {
-      try {
-        const parsed = JSON.parse(braceMatch[0]);
-        const result: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(parsed)) {
-          result[key] = value;
-        }
-        return result;
-      } catch { /* fall through */ }
-    }
-    const tool = toolRegistry.get(toolName);
-    if (tool) {
-      const requiredParams = tool.parameters.filter(p => p.required);
-      if (requiredParams.length === 1) {
-        return { [requiredParams[0].name]: aiResponse.trim() };
-      }
-    }
-    return {};
   }
 
   private async askContinue(): Promise<boolean> {
@@ -466,22 +266,6 @@ export class AgentExecutor {
       this.output(chalk.yellow('  无法加载交互模块，默认中止任务'));
       return false;
     }
-  }
-
-  private generateSummary(): string {
-    const total = this.task.steps.length;
-    const done = this.task.steps.filter(s => s.status === 'done').length;
-    const failed = this.task.steps.filter(s => s.status === 'error').length;
-    const skipped = this.task.steps.filter(s => s.status === 'skipped').length;
-    const duration = ((this.task.completedAt || Date.now()) - this.task.startedAt) / 1000;
-
-    return [
-      `  • 任务类型: ${chalk.cyan(this.task.intent || 'chat')}`,
-      `  • 执行步骤: ${done}/${total} 成功`,
-      failed > 0 ? `  • 失败: ${chalk.red(failed)}` : '',
-      skipped > 0 ? `  • 跳过: ${chalk.yellow(skipped)}` : '',
-      `  • 耗时: ${duration.toFixed(1)}秒`,
-    ].filter(Boolean).join('\n');
   }
 
   private async saveToMemory(summary: string): Promise<void> {
