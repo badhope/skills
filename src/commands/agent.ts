@@ -4,6 +4,7 @@ import { printHeader, printSection, printSuccess, printError, printInfo, printWa
 import { printSteps, printKeyValue } from '../ui/display.js';
 import { runAgentTask, recognizeIntent, type TaskStep } from '../agent/core.js';
 import { runDualModel } from '../agent/dual-model.js';
+import { runPlanAct } from '../agent/plan-act.js';
 import { configManager } from '../config/manager.js';
 import { agentTrustCommand } from './agent/agent-trust.js';
 import { agentRiskCommand } from './agent/agent-risk.js';
@@ -26,6 +27,7 @@ agentCommand
   .option('--architect-model <model>', 'Architect 使用的模型（强推理模型）')
   .option('--editor-model <model>', 'Editor 使用的模型（快速编码模型）')
   .option('-y, --yes', '跳过确认直接执行', false)
+  .option('--plan-first', '先规划后执行（Plan/Act 模式）', false)
   .action(async (task: string, options: {
     provider: string;
     model?: string;
@@ -36,6 +38,7 @@ agentCommand
     architectModel?: string;
     editorModel?: string;
     yes?: boolean;
+    planFirst?: boolean;
   }) => {
     try {
       printHeader();
@@ -75,6 +78,27 @@ agentCommand
           { key: 'Architect 复杂度', value: `${result.architect.complexity}/5` },
           { key: 'Editor 操作数', value: String(result.editor.operations.length) },
           { key: '状态', value: result.editor.success ? chalk.green('成功') : chalk.yellow('有问题') },
+        ]);
+        return;
+      }
+
+      // === Plan/Act 模式 ===
+      if (options.planFirst) {
+        console.log(chalk.cyan('  📋 Plan/Act 模式: 先规划后执行\n'));
+
+        const result = await runPlanAct(task, {
+          llm: {
+            provider: options.provider as any,
+            model: options.model,
+          },
+          autoApprove: options.yes,
+        });
+
+        console.log();
+        printKeyValue([
+          { key: '总耗时', value: `${result.totalDurationMs}ms` },
+          { key: 'Plan', value: result.plan ? `${result.plan.estimatedSteps} 个步骤` : '跳过' },
+          { key: 'Act', value: result.act ? (result.act.allSuccess ? chalk.green('成功') : chalk.yellow('部分失败')) : '未执行' },
         ]);
         return;
       }
