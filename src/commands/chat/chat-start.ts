@@ -7,6 +7,7 @@ import { printHeader, printSection, printSuccess, printError, printInfo } from '
 import { interactiveHelp } from '../../ui/help.js';
 import { memoryManager } from '../../memory/manager.js';
 import { checkApiKey, createProviderInstance, getChatParams } from './helpers.js';
+import { executeSlashCommand } from '../slash-commands.js';
 
 export const chatStartCommand = new Command('start')
   .alias('s')
@@ -107,31 +108,22 @@ export const chatStartCommand = new Command('start')
 
       const userInput = input.trim();
 
-      // 处理命令
+      // 处理斜杠命令
       if (userInput.startsWith('/')) {
-        const cmd = userInput.slice(1).toLowerCase();
-        if (cmd === 'exit' || cmd === 'quit') {
-          printSuccess('对话已结束');
-          break;
-        } else if (cmd === 'help') {
-          await interactiveHelp();
-          continue;
-        } else if (cmd === 'clear') {
-          messages.length = 0;
-          printSuccess('对话历史已清空');
-          continue;
-        } else if (cmd === 'model') {
-          const { model } = await inquirer.prompt([{
-            type: 'list',
-            name: 'model',
-            message: '选择新模型:',
-            choices: info.models.map(m => ({
-              name: `${m.name} ($${m.pricing.inputPerMillion}/M tokens)`,
-              value: m.id
-            }))
-          }]);
-          modelId = model;
-          printSuccess(`已切换到模型: ${modelId}`);
+        const result = await executeSlashCommand(userInput, {
+          args: '',
+          messages,
+          modelId,
+          providerType,
+          setModel: (newModel: string) => { modelId = newModel; },
+          setProvider: () => {},
+        });
+        if (result) {
+          if (result.message) console.log(result.message);
+          if (result.exit) {
+            printSuccess('对话已结束');
+            break;
+          }
           continue;
         }
       }
