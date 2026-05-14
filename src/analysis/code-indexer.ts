@@ -4,145 +4,27 @@
  * Builds and queries a searchable in-memory code index. Parses all files,
  * extracts symbols and chunks, builds an inverted index, and supports
  * text-based search with scoring and filtering.
+ *
+ * This is the main entry point that orchestrates the indexing process.
+ * For types, scoring logic, and inverted index implementation, see the
+ * indexer/ subdirectory.
  */
 
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import { parseFiles } from '../parser/engine.js';
 import { extractSymbols } from '../parser/symbols.js';
-import type { CodeSymbol, SymbolKind } from '../parser/symbols.js';
+import type { CodeSymbol } from '../parser/symbols.js';
 import { chunkFiles } from './semantic-chunker.js';
-import type { CodeChunk } from './semantic-chunker.js';
+import { collectSourceFiles } from '../utils/file-system.js';
+import { globMatch } from '../utils/glob.js';
 
-/** A built code index */
-export interface CodeIndex {
-  /** Index ID (unique identifier) */
-  id: string;
-  /** Root directory that was indexed */
-  rootDir: string;
-  /** Timestamp when the index was built */
-  builtAt: number;
-  /** Number of files indexed */
-  fileCount: number;
-  /** Number of symbols indexed */
-  symbolCount: number;
-}
-
-/** A single entry in the search index */
-export interface IndexEntry {
-  /** Entry type */
-  type: 'symbol' | 'file' | 'chunk';
-  /** Name of the symbol, file, or chunk */
-  name: string;
-  /** File path */
-  filePath: string;
-  /** Line number (1-based), if applicable */
-  line?: number;
-  /** Symbol kind (function, class, interface, etc.) */
-  kind?: string;
-  /** Function/class signature */
-  signature?: string;
-  /** JSDoc or doc comment */
-  docstring?: string;
-  /** Relevance score for ranking */
-  score: number;
-}
-
-/** Options for searching the index */
-export interface SearchOptions {
-  /** Maximum results to return (default: 20) */
-  maxResults?: number;
-  /** Filter by entry type */
-  typeFilter?: ('symbol' | 'file' | 'chunk')[];
-  /** Filter by symbol kind (e.g. ['function', 'class']) */
-  kindFilter?: string[];
-  /** Glob pattern to filter file paths */
-  filePathPattern?: string;
-}
-
-/** Supported source file extensions */
-const SOURCE_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs', '.py', '.pyi',
-]);
-
-/** Default exclude patterns */
-const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules/**', 'dist/**', 'lib/**', 'coverage/**', '.git/**',
-  '__pycache__/**', '.venv/**', 'venv/**',
-];
-
-/** Symbol kinds to index */
-const INDEXABLE_KINDS = new Set<SymbolKind>([
-  'function', 'class', 'interface', 'type', 'enum', 'method', 'module', 'namespace',
-]);
+import type { CodeIndex, IndexEntry, SearchOptions, IndexData } from './indexer/types.js';
+import { INDEXABLE_KINDS } from './indexer/types.js';
+import { InvertedIndex } from './indexer/inverted-index.js';
+import { computeScore } from './indexer/scoring.js';
 
 /** In-memory index storage */
 const indexStore = new Map<string, IndexData>();
-
-/** Internal index data structure */
-interface IndexData {
-  index: CodeIndex;
-  entries: IndexEntry[];
-  /** Inverted index: lowercase name -> list of entry indices */
-  invertedIndex: Map<string, number[]>;
-  /** All entries grouped by file */
-  entriesByFile: Map<string, number[]>;
-}
-
-/**
- * Simple glob matcher supporting * and ** wildcards.
- */
-function simpleGlobMatch(str: string, pattern: string): boolean {
-  const regexStr = pattern
-    .replace(/\*\*/g, '{{DOUBLESTAR}}')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]')
-    .replace(/\./g, '\\.')
-    .replace(/\{\{DOUBLESTAR\}\}/g, '.*');
-  return new RegExp(`^${regexStr}$`).test(str);
-}
-
-/**
- * Check if a file should be excluded based on patterns.
- */
-function shouldExclude(filePath: string, rootDir: string): boolean {
-  const relative = path.relative(rootDir, filePath).replace(/\\/g, '/');
-  for (const pattern of DEFAULT_EXCLUDE_PATTERNS) {
-    if (simpleGlobMatch(relative, pattern)) return true;
-  }
-  return false;
-}
-
-/**
- * Recursively collect source files from a directory.
- */
-async function collectSourceFiles(rootDir: string): Promise<string[]> {
-  const files: string[] = [];
-
-  async function walk(dir: string): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(fullPath);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (SOURCE_EXTENSIONS.has(ext) && !shouldExclude(fullPath, rootDir)) {
-          files.push(fullPath);
-        }
-      }
-    }
-  }
-
-  await walk(rootDir);
-  return files;
-}
 
 /**
  * Extract JSDoc or doc comment preceding a symbol from the source.
@@ -324,49 +206,6 @@ export async function buildCodeIndex(rootDir: string): Promise<CodeIndex> {
 }
 
 /**
- * Calculate a relevance score for an entry against a query.
- */
-function calculateScore(entry: IndexEntry, query: string): number {
-  const lowerQuery = query.toLowerCase();
-  const lowerName = entry.name.toLowerCase();
-  let score = 0;
-
-  // Exact name match (highest score)
-  if (lowerName === lowerQuery) {
-    score += 100;
-  }
-  // Name starts with query
-  else if (lowerName.startsWith(lowerQuery)) {
-    score += 80;
-  }
-  // Name contains query
-  else if (lowerName.includes(lowerQuery)) {
-    score += 60;
-  }
-
-  // Type/kind match
-  if (entry.kind && entry.kind.toLowerCase().includes(lowerQuery)) {
-    score += 40;
-  }
-
-  // Docstring contains query
-  if (entry.docstring && entry.docstring.toLowerCase().includes(lowerQuery)) {
-    score += 30;
-  }
-
-  // Signature contains query
-  if (entry.signature && entry.signature.toLowerCase().includes(lowerQuery)) {
-    score += 20;
-  }
-
-  // Prefer symbols over chunks over files
-  if (entry.type === 'symbol') score += 10;
-  else if (entry.type === 'chunk') score += 5;
-
-  return score;
-}
-
-/**
  * Search the code index for entries matching a query.
  *
  * Uses text matching with scoring:
@@ -435,12 +274,12 @@ export function searchIndex(
     // Apply file path pattern filter
     if (filePathPattern) {
       const relative = path.relative(index.rootDir, entry.filePath).replace(/\\/g, '/');
-      if (!simpleGlobMatch(relative, filePathPattern)) {
+      if (!globMatch(relative, filePathPattern)) {
         continue;
       }
     }
 
-    const score = calculateScore(entry, query);
+    const score = computeScore(entry, query);
     if (score > 0) {
       scored.push({ ...entry, score });
     }

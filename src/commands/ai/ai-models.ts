@@ -5,6 +5,7 @@ import { configManager } from '../../config/manager.js';
 import { PROVIDER_INFO, PROVIDER_TYPE_LIST, type ProviderType } from '../../types.js';
 import { printHeader, printSection, printInfo, printWarning } from '../../ui/logo.js';
 import { showProviderMenu } from '../../ui/menu.js';
+import { waitForEnter } from '../../utils/io.js';
 
 async function isProviderConfigured(type: ProviderType): Promise<boolean> {
   const info = PROVIDER_INFO[type];
@@ -115,15 +116,6 @@ async function showModelInfo() {
 
   console.log('\n');
   await waitForEnter();
-}
-
-async function waitForEnter(): Promise<void> {
-  if (!process.stdin.isTTY) return;
-  await inquirer.prompt([{
-    type: 'input',
-    name: 'continue',
-    message: chalk.gray('按 Enter 返回主菜单...')
-  }]);
 }
 
 export const aiModelsCommand = new Command('model')

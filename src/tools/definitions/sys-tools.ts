@@ -2,18 +2,11 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 import type { ToolDefinition } from '../registry.js';
+import { formatBytes } from '../../utils/format.js';
 
 const execAsync = promisify(exec);
 
 // ==================== 辅助函数 ====================
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 function formatUptime(seconds: number): string {
   const days = Math.floor(seconds / 86400);

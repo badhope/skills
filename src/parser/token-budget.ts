@@ -8,12 +8,10 @@
 
 import * as path from 'path';
 import type { CodeSymbol } from './symbols.js';
+import { estimateTokens } from '../utils/tokens.js';
 
 /** Default maximum token budget */
 const DEFAULT_MAX_TOKENS = 4096;
-
-/** Approximate characters per token (conservative estimate) */
-const CHARS_PER_TOKEN = 4;
 
 /** Maximum length for a single signature line */
 const MAX_SIGNATURE_LENGTH = 120;
@@ -75,14 +73,27 @@ export function createTokenBudget(maxTokens: number = DEFAULT_MAX_TOKENS): Token
 /**
  * Estimate the number of tokens in a text string.
  *
- * Uses a simple heuristic of ~4 characters per token.
- * This is a rough approximation suitable for budgeting purposes.
+ * Uses the canonical token estimation from utils/tokens.js which handles
+ * Chinese (1.5 tokens/char) and English (0.25 tokens/char) separately
+ * for more accurate estimation.
  *
  * @param text - The text to estimate tokens for
  * @returns Estimated token count
  */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+export { estimateTokens } from '../utils/tokens.js';
+
+/**
+ * Estimate tokens for repo map content.
+ *
+ * Uses a simpler heuristic optimized for the structured format
+ * of repo map output (4 chars/token approximation).
+ * This is suitable for budgeting purposes where approximate accuracy suffices.
+ *
+ * @param text - The repo map text to estimate tokens for
+ * @returns Estimated token count
+ */
+export function estimateTokensForMap(text: string): number {
+  return Math.ceil(text.length / 4);
 }
 
 /**

@@ -8,6 +8,7 @@ import { printTable, printKeyValue } from '../ui/display.js';
 import { showMainMenu } from '../ui/menu.js';
 import { aiSuggestCommand } from './ai/ai-suggest.js';
 import { aiModelsCommand } from './ai/ai-models.js';
+import { waitForEnter } from '../utils/io.js';
 
 const aiCommand = new Command('ai')
   .description('AI模型管理');
@@ -140,15 +141,6 @@ async function showModelSuggestion() {
 async function showModelInfo() {
   const { showModelInfo: info } = await import('./ai/ai-models.js');
   await info();
-}
-
-async function waitForEnter(): Promise<void> {
-  if (!process.stdin.isTTY) return;
-  await inquirer.prompt([{
-    type: 'input',
-    name: 'continue',
-    message: chalk.gray('按 Enter 返回主菜单...')
-  }]);
 }
 
 // ==================== 子命令（兼容） ====================

@@ -3,16 +3,9 @@ import fsCb from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 import type { ToolDefinition } from '../registry.js';
+import { formatBytes } from '../../utils/format.js';
 
 // ==================== 辅助函数 ====================
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // ==================== 文件工具 ====================
 

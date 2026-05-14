@@ -7,12 +7,13 @@
  * definition, type-reference, or usage).
  */
 
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import { parseFile, parseFiles } from '../parser/engine.js';
 import { extractSymbols, findSymbolByName } from '../parser/symbols.js';
 import type { CodeSymbol } from '../parser/symbols.js';
 import { getLanguageByFilePath } from '../parser/languages.js';
+import { globMatch } from '../utils/glob.js';
+import { collectSourceFiles } from '../utils/file-system.js';
 
 /** A single reference to a symbol */
 export interface Reference {
@@ -48,72 +49,6 @@ export interface FindReferencesOptions {
   includeDefinition?: boolean;
   /** Glob patterns to restrict which files to search */
   filePatterns?: string[];
-}
-
-/** Supported source file extensions */
-const SOURCE_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs', '.py', '.pyi',
-]);
-
-/** Default exclude patterns */
-const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules/**', 'dist/**', 'lib/**', 'coverage/**', '.git/**',
-  '__pycache__/**', '.venv/**', 'venv/**',
-];
-
-/**
- * Check if a file should be excluded based on patterns.
- */
-function shouldExclude(filePath: string, rootDir: string): boolean {
-  const relative = path.relative(rootDir, filePath).replace(/\\/g, '/');
-  for (const pattern of DEFAULT_EXCLUDE_PATTERNS) {
-    if (simpleGlobMatch(relative, pattern)) return true;
-  }
-  return false;
-}
-
-/**
- * Simple glob matcher supporting * and ** wildcards.
- */
-function simpleGlobMatch(str: string, pattern: string): boolean {
-  const regexStr = pattern
-    .replace(/\*\*/g, '{{DOUBLESTAR}}')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]')
-    .replace(/\./g, '\\.')
-    .replace(/\{\{DOUBLESTAR\}\}/g, '.*');
-  return new RegExp(`^${regexStr}$`).test(str);
-}
-
-/**
- * Recursively collect source files from a directory.
- */
-async function collectSourceFiles(rootDir: string): Promise<string[]> {
-  const files: string[] = [];
-
-  async function walk(dir: string): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(fullPath);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        if (SOURCE_EXTENSIONS.has(ext) && !shouldExclude(fullPath, rootDir)) {
-          files.push(fullPath);
-        }
-      }
-    }
-  }
-
-  await walk(rootDir);
-  return files;
 }
 
 /**
@@ -324,7 +259,7 @@ export async function findReferences(
   if (filePatterns && filePatterns.length > 0) {
     filesToSearch = allFiles.filter(fp => {
       const relative = path.relative(rootDir, fp).replace(/\\/g, '/');
-      return filePatterns.some(pattern => simpleGlobMatch(relative, pattern));
+      return filePatterns.some(pattern => globMatch(relative, pattern));
     });
   }
 

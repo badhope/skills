@@ -38,6 +38,8 @@ export interface CodeSymbol {
   signature?: string;
   /** 父级符号名 */
   parent?: string;
+  /** 在 AST 中的嵌套深度（0 = 顶层） */
+  nestingLevel?: number;
 }
 
 /** TypeScript/JavaScript 节点类型到符号类型的映射 */

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import fsCb from 'fs';
 import path from 'path';
 import { glob } from 'glob';
+import { formatBytes } from '../utils/format.js';
 
 export interface FileResult {
   success: boolean;
@@ -178,14 +179,6 @@ export async function getFileInfo(filePath: string): Promise<FileResult> {
   } catch (error) {
     return { success: false, path: filePath, error: `获取信息失败: ${error}` };
   }
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 export async function copyFile(src: string, dest: string): Promise<FileResult> {

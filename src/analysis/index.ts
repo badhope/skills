@@ -15,7 +15,7 @@ export {
 export type {
   CodeChunk,
   ChunkOptions,
-} from './semantic-chunker.js';
+} from './chunker/types.js';
 
 // Reference finder
 export {
@@ -35,8 +35,6 @@ export {
   getDefinition,
   getTypeInfo,
 } from './code-indexer.js';
-export type {
-  CodeIndex,
-  IndexEntry,
-  SearchOptions,
-} from './code-indexer.js';
+export type { CodeIndex, IndexEntry, SearchOptions } from './indexer/types.js';
+export { INDEXABLE_KINDS } from './indexer/types.js';
+export { InvertedIndex, computeScore } from './indexer/index.js';

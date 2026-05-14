@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { configManager, SANDBOX_PERMISSIONS, type SandboxLevel } from '../../config/manager.js';
 import { printHeader, printSection, printSuccess, printError, printWarning } from '../../ui/logo.js';
 import { printTable, printKeyValue } from '../../ui/display.js';
+import { formatBytes } from '../../utils/format.js';
 
 export const sandboxConfigCommand = new Command('sandbox')
   .description('沙盒权限管理');
@@ -186,11 +187,3 @@ sandboxConfigCommand
     console.log(chalk.gray(`  风险等级: ${riskLabel}`));
     console.log();
   });
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}

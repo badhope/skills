@@ -15,7 +15,6 @@
  * 7. Return formatted repo map
  */
 
-import * as fs from 'fs/promises';
 import * as path from 'path';
 import { parseFiles } from './engine.js';
 import { extractSymbols } from './symbols.js';
@@ -26,6 +25,12 @@ import {
   estimateTokens,
   formatFileMap,
 } from './token-budget.js';
+import { globMatch, matchesAnyGlob } from '../utils/glob.js';
+import {
+  collectSourceFiles,
+  DEFAULT_EXCLUDE_PATTERNS,
+  DEFAULT_SOURCE_EXTENSIONS,
+} from '../utils/file-system.js';
 
 /** Options for repo map generation */
 export interface RepoMapOptions {
@@ -51,173 +56,6 @@ export interface RepoMapResult {
   tokenCount: number;
   /** Files skipped due to budget constraints */
   skippedFiles: string[];
-}
-
-/** Default exclude patterns */
-const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules/**',
-  'dist/**',
-  'lib/**',
-  '*.test.ts',
-  '*.spec.ts',
-  '*.d.ts',
-  '*.test.js',
-  '*.spec.js',
-  '*.test.py',
-  '*.test.mjs',
-  'coverage/**',
-  '.git/**',
-  '__pycache__/**',
-  '.venv/**',
-  'venv/**',
-  '*.pyc',
-];
-
-/** Supported source file extensions */
-const SOURCE_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.mts',
-  '.cts',
-  '.mjs',
-  '.cjs',
-  '.py',
-  '.pyi',
-]);
-
-/**
- * Check if a file path matches any of the given glob patterns.
- *
- * Uses simple glob matching with support for *, **, and ? wildcards.
- */
-function matchesAnyPattern(filePath: string, patterns: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-
-  for (const pattern of patterns) {
-    if (matchesGlob(normalized, pattern)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Simple glob matcher supporting *, **, and ? wildcards.
- */
-function matchesGlob(str: string, pattern: string): boolean {
-  // Convert glob pattern to regex
-  const regexStr = globToRegex(pattern);
-  const regex = new RegExp(regexStr);
-  return regex.test(str);
-}
-
-/**
- * Convert a glob pattern to a regex string.
- */
-function globToRegex(pattern: string): string {
-  let result = '';
-  let i = 0;
-
-  while (i < pattern.length) {
-    const ch = pattern[i];
-
-    if (ch === '*') {
-      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
-        // ** matches any path segment(s)
-        if (i + 2 < pattern.length && pattern[i + 2] === '/') {
-          result += '(?:.*/)?';
-          i += 3;
-          continue;
-        } else {
-          result += '.*';
-          i += 2;
-          continue;
-        }
-      } else {
-        // * matches anything except /
-        result += '[^/]*';
-        i++;
-        continue;
-      }
-    } else if (ch === '?') {
-      result += '[^/]';
-      i++;
-      continue;
-    } else if (ch === '.' || ch === '+' || ch === '^' || ch === '$' || ch === '|' ||
-               ch === '(' || ch === ')' || ch === '[' || ch === ']' || ch === '{' ||
-               ch === '}' || ch === '\\') {
-      result += '\\' + ch;
-      i++;
-      continue;
-    } else {
-      result += ch;
-      i++;
-      continue;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Recursively collect all source files in a directory.
- *
- * @param dir - Directory to scan
- * @param excludePatterns - Glob patterns to exclude
- * @param includePatterns - Glob patterns to include (if provided, only matching files are included)
- * @returns Array of absolute file paths
- */
-async function collectSourceFiles(
-  dir: string,
-  excludePatterns: string[],
-  includePatterns?: string[]
-): Promise<string[]> {
-  const files: string[] = [];
-
-  async function walk(currentDir: string): Promise<void> {
-    let entries;
-    try {
-      entries = await fs.readdir(currentDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
-      const relativePath = path.relative(dir, fullPath).replace(/\\/g, '/');
-
-      // Check exclude patterns
-      if (matchesAnyPattern(relativePath, excludePatterns)) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        await walk(fullPath);
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-
-        // Check if it's a source file
-        if (!SOURCE_EXTENSIONS.has(ext)) {
-          continue;
-        }
-
-        // Check include patterns (if specified)
-        if (includePatterns && includePatterns.length > 0) {
-          if (!matchesAnyPattern(relativePath, includePatterns)) {
-            continue;
-          }
-        }
-
-        files.push(fullPath);
-      }
-    }
-  }
-
-  await walk(dir);
-  return files;
 }
 
 /**

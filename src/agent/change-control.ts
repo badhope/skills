@@ -6,11 +6,27 @@
  * 2. 文件备份 - 在高风险操作前自动备份文件
  * 3. 用户批准流程 - 对中高风险操作请求用户确认
  * 4. 快照与回滚 - 支持将文件恢复到修改前的状态
+ *
+ * @example
+ * ```typescript
+ * import { ChangeControlManager } from './change-control/index.js';
+ *
+ * const manager = new ChangeControlManager();
+ *
+ * // 执行带保护的变更
+ * const result = await manager.executeProtectedChange(
+ *   'modify',
+ *   '/project/config.json',
+ *   async () => {
+ *     await fs.writeFile('/project/config.json', newContent);
+ *     return '修改完成';
+ *   }
+ * );
+ * ```
  */
 
 import crypto from 'node:crypto';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
 
 // 从子模块导入风险规则与评估
 import {
@@ -23,8 +39,27 @@ import {
 } from './risk-rules.js';
 import type { ChangeAction } from './risk-rules.js';
 
-// 从子模块导入备份与回滚
+// 从备份子模块导入
 import { backupFile, createSnapshot, rollback } from './backup.js';
+
+// 从类型子模块导入
+import type { ChangeRecord } from './change-control/types.js';
+
+// 从风险评估子模块导入
+import {
+  assessFileRisk,
+  getRiskStyle,
+  getRiskLabel,
+  isRiskAtOrAbove,
+  isAutoApprovable,
+} from './change-control/risk-assessor.js';
+
+// 从审批子模块导入
+import {
+  formatRiskSummary,
+  requestApproval,
+  isInteractiveMode,
+} from './change-control/approval.js';
 
 // Re-export 风险规则模块的公共接口
 export {
@@ -39,32 +74,8 @@ export {
 // Re-export 备份模块的公共接口
 export { backupFile, createSnapshot, rollback };
 
-// ==================== 接口 ====================
-
-/**
- * 变更记录接口
- * 描述一次文件或命令操作的完整信息
- */
-export interface ChangeRecord {
-  /** 唯一标识符 */
-  id: string;
-  /** 操作类型 */
-  action: 'read' | 'create' | 'modify' | 'delete' | 'move' | 'shell';
-  /** 操作目标（文件路径或命令） */
-  target: string;
-  /** 风险等级 */
-  risk: RiskLevel;
-  /** 是否已备份 */
-  backedUp: boolean;
-  /** 备份文件路径 */
-  backupPath?: string;
-  /** 是否已获批准 */
-  approved: boolean;
-  /** 操作时间戳 */
-  timestamp: number;
-  /** 修改前的文件内容快照（用于回滚） */
-  snapshot?: string;
-}
+// Re-export 类型
+export type { ChangeRecord } from './change-control/types.js';
 
 // ==================== 内部工具函数 ====================
 
@@ -85,21 +96,6 @@ function generateId(): string {
  * - 评估风险并请求批准
  * - 执行带保护的变更（自动备份 + 风险评估 + 审批）
  * - 变更历史查询与统计
- *
- * @example
- * ```typescript
- * const manager = new ChangeControlManager();
- *
- * // 执行带保护的变更
- * const result = await manager.executeProtectedChange(
- *   'modify',
- *   '/project/config.json',
- *   async () => {
- *     await fs.writeFile('/project/config.json', newContent);
- *     return '修改完成';
- *   }
- * );
- * ```
  */
 export class ChangeControlManager {
   /** 变更记录列表 */
@@ -120,15 +116,15 @@ export class ChangeControlManager {
     action: ChangeRecord['action'],
     target: string
   ): ChangeRecord {
-    const { risk, reason } = assessRisk(action, target);
+    const assessment = assessFileRisk(action, target);
 
     const record: ChangeRecord = {
       id: generateId(),
       action,
       target,
-      risk,
+      risk: assessment.risk,
       backedUp: false,
-      approved: risk === RiskLevel.NEGLIGIBLE || risk === RiskLevel.LOW,
+      approved: isAutoApprovable(assessment.risk),
       timestamp: Date.now(),
     };
 
@@ -140,13 +136,13 @@ export class ChangeControlManager {
     }
 
     // 在控制台输出变更记录
-    const style = RISK_LEVEL_STYLE[risk];
+    const style = getRiskStyle(assessment.risk);
     console.log(
       chalk.dim(`[变更记录] `) +
-      `${style(`[${RISK_LEVEL_LABEL[risk]}]`)} ` +
+      `${style(`[${getRiskLabel(assessment.risk)}]`)} ` +
       `${chalk.cyan(action)} ` +
       chalk.dim(target) +
-      (reason ? chalk.dim(` (${reason})`) : '')
+      (assessment.reason ? chalk.dim(` (${assessment.reason})`) : '')
     );
 
     return record;
@@ -166,71 +162,34 @@ export class ChangeControlManager {
     action: ChangeRecord['action'],
     target: string
   ): Promise<{ approved: boolean; record: ChangeRecord }> {
-    const { risk, reason, rules } = assessRisk(action, target);
+    const assessment = assessFileRisk(action, target);
 
     const record: ChangeRecord = {
       id: generateId(),
       action,
       target,
-      risk,
+      risk: assessment.risk,
       backedUp: false,
       approved: false,
       timestamp: Date.now(),
     };
 
     // 低风险操作自动批准
-    if (RISK_LEVEL_WEIGHT[risk] < RISK_LEVEL_WEIGHT[RiskLevel.MEDIUM]) {
+    if (isAutoApprovable(assessment.risk)) {
       record.approved = true;
       this.records.push(record);
       return { approved: true, record };
     }
 
     // 中风险及以上需要用户确认
-    console.log('');
-    console.log(chalk.bold('═══════════════════════════════════════'));
-    console.log(chalk.bold('  变更控制 - 操作审批'));
-    console.log(chalk.bold('═══════════════════════════════════════'));
-    console.log('');
-    console.log(chalk.cyan('  操作类型: ') + chalk.white(action));
-    console.log(chalk.cyan('  操作目标: ') + chalk.white(target));
-    console.log(chalk.cyan('  风险等级: ') + RISK_LEVEL_STYLE[risk](`[${RISK_LEVEL_LABEL[risk]}]`));
-    console.log(chalk.cyan('  风险原因: ') + chalk.white(reason));
-    console.log(chalk.cyan('  匹配规则: ') + chalk.white(rules.join('、')));
-    console.log('');
+    const approvalResult = await requestApproval(action, target, assessment, record);
+    record.approved = approvalResult.approved;
 
-    // 非交互模式下默认拒绝中高风险操作
-    if (!process.stdin.isTTY) {
-      console.log(chalk.yellow('[非交互模式] 检测到需要审批的操作，默认拒绝。'));
-      console.log('');
+    if (approvalResult.approved) {
       this.records.push(record);
-      return { approved: false, record };
     }
 
-    // 使用 inquirer 请求用户确认
-    try {
-      const { confirmed } = await inquirer.prompt([{
-        type: 'confirm',
-        name: 'confirmed',
-        message: '是否批准执行以上操作？',
-        default: false,
-      }]);
-
-      record.approved = confirmed;
-      this.records.push(record);
-
-      if (confirmed) {
-        console.log(chalk.green('  操作已批准，继续执行。'));
-      } else {
-        console.log(chalk.yellow('  操作已拒绝。'));
-      }
-      console.log('');
-
-      return { approved: confirmed, record };
-    } catch {
-      console.log(chalk.yellow('\n  用户中断，默认拒绝。'));
-      this.records.push(record);
-      return { approved: false, record };
-    }
+    return { approved: approvalResult.approved, record };
   }
 
   /**
@@ -266,20 +225,20 @@ export class ChangeControlManager {
     }
 
     // 步骤 1: 评估风险
-    const { risk, reason, rules } = assessRisk(action, target);
+    const assessment = assessFileRisk(action, target);
 
     const record: ChangeRecord = {
       id: generateId(),
       action,
       target,
-      risk,
+      risk: assessment.risk,
       backedUp: false,
       approved: false,
       timestamp: Date.now(),
     };
 
     // 步骤 2: 如果风险 >= HIGH，自动备份文件（仅对文件操作）
-    if (RISK_LEVEL_WEIGHT[risk] >= RISK_LEVEL_WEIGHT[RiskLevel.HIGH]) {
+    if (isRiskAtOrAbove(assessment.risk, RiskLevel.HIGH)) {
       if (action !== 'shell' && action !== 'read') {
         const backupResult = await backupFile(target);
         if (backupResult.success && backupResult.backupPath) {
@@ -293,64 +252,26 @@ export class ChangeControlManager {
     }
 
     // 步骤 3: 如果风险 >= MEDIUM，请求用户确认
-    if (RISK_LEVEL_WEIGHT[risk] >= RISK_LEVEL_WEIGHT[RiskLevel.MEDIUM]) {
-      console.log('');
-      console.log(chalk.bold('═══════════════════════════════════════'));
-      console.log(chalk.bold('  变更控制 - 受保护操作'));
-      console.log(chalk.bold('═══════════════════════════════════════'));
-      console.log('');
-      console.log(chalk.cyan('  操作类型: ') + chalk.white(action));
-      console.log(chalk.cyan('  操作目标: ') + chalk.white(target));
-      console.log(chalk.cyan('  风险等级: ') + RISK_LEVEL_STYLE[risk](`[${RISK_LEVEL_LABEL[risk]}]`));
-      console.log(chalk.cyan('  风险原因: ') + chalk.white(reason));
-      console.log(chalk.cyan('  匹配规则: ') + chalk.white(rules.join('、')));
+    if (isRiskAtOrAbove(assessment.risk, RiskLevel.MEDIUM)) {
+      const backupInfo = record.backedUp
+        ? { backedUp: record.backedUp, backupPath: record.backupPath }
+        : undefined;
 
-      if (record.backedUp) {
-        console.log(chalk.cyan('  备份状态: ') + chalk.green(`已备份 (${record.backupPath})`));
-      }
-      console.log('');
+      const approvalResult = await requestApproval(action, target, assessment, record, backupInfo);
 
-      // 非交互模式下默认拒绝中高风险操作
-      if (!process.stdin.isTTY) {
-        console.log(chalk.yellow('[非交互模式] 检测到需要审批的操作，默认拒绝。'));
-        console.log('');
+      if (!approvalResult.approved) {
         this.records.push(record);
         return { success: false, record };
       }
 
-      try {
-        const { confirmed } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'confirmed',
-          message: '是否批准执行以上操作？',
-          default: false,
-        }]);
-
-        if (!confirmed) {
-          record.approved = false;
-          this.records.push(record);
-          console.log(chalk.yellow('  操作已拒绝。'));
-          console.log('');
-          return { success: false, record };
-        }
-
-        record.approved = true;
-        console.log(chalk.green('  操作已批准，继续执行。'));
-        console.log('');
-      } catch {
-        console.log(chalk.yellow('\n  用户中断，默认拒绝。'));
-        record.approved = false;
-        this.records.push(record);
-        console.log('');
-        return { success: false, record };
-      }
+      record.approved = true;
     } else {
       // 低风险操作自动批准
       record.approved = true;
     }
 
     // 步骤 4: 如果风险 >= HIGH，创建快照（仅对文件操作）
-    if (RISK_LEVEL_WEIGHT[risk] >= RISK_LEVEL_WEIGHT[RiskLevel.HIGH]) {
+    if (isRiskAtOrAbove(assessment.risk, RiskLevel.HIGH)) {
       if (action !== 'shell' && action !== 'read') {
         const snapshot = await createSnapshot(target);
         if (snapshot !== null) {

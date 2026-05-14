@@ -6,6 +6,7 @@ import { createProvider } from '../providers/index.js';
 import { PROVIDER_INFO, PROVIDER_TYPE_LIST, type ProviderType } from '../types.js';
 import { memoryManager } from '../memory/manager.js';
 import { listTools, toolRegistry } from '../tools/registry.js';
+import { waitForEnter as pause } from '../utils/io.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
@@ -24,17 +25,6 @@ function runSubCommand(args: string[]): Promise<number> {
       printError(`子命令启动失败: ${err.message}`);
       resolve(1);
     });
-  });
-}
-
-/**
- * 暂停等待用户按回车
- */
-function pause(): Promise<void> {
-  console.log(chalk.gray('\n  按回车键返回主菜单...'));
-  return new Promise((resolve) => {
-    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
-    rl.on('line', () => { rl.close(); resolve(); });
   });
 }
 

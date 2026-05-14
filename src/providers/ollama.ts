@@ -1,6 +1,7 @@
 import { BaseProvider } from '../base.js';
 import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message } from '../types.js';
 import { PROVIDER_INFO } from '../types.js';
+import { formatBytes } from '../utils/format.js';
 
 interface OllamaModel {
   name: string;
@@ -243,18 +244,10 @@ export class OllamaProvider extends BaseProvider {
       return data.models.map(model => ({
         id: model.model,
         name: model.name,
-        size: this.formatBytes(model.size),
+        size: formatBytes(model.size),
       }));
     } catch {
       return [];
     }
-  }
-
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }
