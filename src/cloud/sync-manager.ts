@@ -1,0 +1,137 @@
+/**
+ * Sync Manager
+ * Main synchronization manager for configuration, memory, and plugins
+ */
+
+import os from 'os';
+import type { SyncConfig, SyncData, SyncResult, DeviceInfo, ConflictStrategy } from './types.js';
+import { SYNC_SCHEMA_VERSION, DEFAULT_SYNC_CONFIG } from './types.js';
+import { createSyncProvider, type SyncProvider } from './provider.js';
+import { configManager } from '../config/manager.js';
+import { memoryManager } from '../memory/manager.js';
+
+export class SyncManager {
+  private provider: SyncProvider;
+  private config: SyncConfig;
+  private deviceId: string;
+  private syncInterval?: ReturnType<typeof setInterval>;
+  private syncing = false;
+
+  constructor(config: SyncConfig) {
+    this.config = { ...DEFAULT_SYNC_CONFIG, ...config };
+    this.provider = createSyncProvider(this.config);
+    this.deviceId = this.getOrCreateDeviceId();
+  }
+
+  async sync(): Promise<SyncResult> {
+    if (this.syncing) return this.errorResult('Sync already in progress');
+    this.syncing = true;
+    const timestamp = new Date().toISOString();
+    try {
+      const localData = await this.gatherLocalData();
+      const remoteData = await this.provider.download();
+      if (!remoteData) { await this.provider.upload(localData); return this.successResult('upload', timestamp); }
+      const conflict = this.detectConflict(localData, remoteData);
+      if (conflict) return { success: false, action: 'conflict', timestamp, error: 'Sync conflict detected', changes: conflict };
+      const localTime = new Date(localData.timestamp).getTime();
+      const remoteTime = new Date(remoteData.timestamp).getTime();
+      if (localTime > remoteTime) { await this.provider.upload(localData); return this.successResult('upload', timestamp); }
+      else { await this.applyRemoteData(remoteData); return this.successResult('download', timestamp); }
+    } catch (error) { return this.errorResult(error instanceof Error ? error.message : 'Unknown error'); }
+    finally { this.syncing = false; }
+  }
+
+  async upload(): Promise<SyncResult> {
+    if (this.syncing) return this.errorResult('Sync already in progress');
+    this.syncing = true;
+    try { await this.provider.upload(await this.gatherLocalData()); return this.successResult('upload', new Date().toISOString()); }
+    catch (error) { return this.errorResult(error instanceof Error ? error.message : 'Unknown error'); }
+    finally { this.syncing = false; }
+  }
+
+  async download(): Promise<SyncResult> {
+    if (this.syncing) return this.errorResult('Sync already in progress');
+    this.syncing = true;
+    try {
+      const data = await this.provider.download();
+      if (!data) return this.errorResult('No remote data available');
+      await this.applyRemoteData(data);
+      return this.successResult('download', new Date().toISOString());
+    } catch (error) { return this.errorResult(error instanceof Error ? error.message : 'Unknown error'); }
+    finally { this.syncing = false; }
+  }
+
+  startAutoSync(intervalMinutes?: number): void {
+    const interval = (intervalMinutes || this.config.syncInterval || 5) * 60 * 1000;
+    this.stopAutoSync();
+    this.syncInterval = setInterval(() => this.sync().catch(e => console.error('[Sync] Auto sync failed:', e)), interval);
+  }
+
+  stopAutoSync(): void { if (this.syncInterval) { clearInterval(this.syncInterval); this.syncInterval = undefined; } }
+
+  async resolveConflict(strategy: ConflictStrategy): Promise<SyncResult> {
+    try {
+      const localData = await this.gatherLocalData();
+      const remoteData = await this.provider.download();
+      if (!remoteData) return this.errorResult('No remote data');
+      const resolved = strategy === 'local' ? localData : strategy === 'remote' ? remoteData : this.mergeData(localData, remoteData);
+      await this.provider.upload(resolved);
+      if (strategy !== 'local') await this.applyRemoteData(resolved);
+      return this.successResult('upload', new Date().toISOString());
+    } catch (error) { return this.errorResult(error instanceof Error ? error.message : 'Unknown error'); }
+  }
+
+  getDeviceInfo(): DeviceInfo { return { id: this.deviceId, name: os.hostname(), lastSeenAt: new Date().toISOString(), platform: process.platform, version: SYNC_SCHEMA_VERSION }; }
+  async listOtherDevices(): Promise<DeviceInfo[]> { return (await this.provider.listDevices()).filter(d => d.id !== this.deviceId); }
+  async removeDevice(deviceId: string): Promise<void> { await this.provider.removeDevice(deviceId); }
+  getLastSyncTime(): Date | null { return this.config.lastSyncAt ? new Date(this.config.lastSyncAt) : null; }
+  isSyncing(): boolean { return this.syncing; }
+  isEnabled(): boolean { return this.config.enabled; }
+
+  updateConfig(config: Partial<SyncConfig>): void {
+    this.config = { ...this.config, ...config };
+    if (config.provider || config.gistId || config.gistToken || config.customEndpoint || config.customToken) {
+      this.provider = createSyncProvider(this.config);
+    }
+  }
+
+  private async gatherLocalData(): Promise<SyncData> {
+    await configManager.init();
+    const config = configManager.getAllConfig();
+    let memory: SyncData['memory'];
+    try { await memoryManager.init(); memory = { conversations: await memoryManager.loadAllRecords(), knowledge: [] }; } catch { memory = undefined; }
+    return { version: SYNC_SCHEMA_VERSION, deviceId: this.deviceId, timestamp: new Date().toISOString(), config: JSON.parse(JSON.stringify(config)), memory };
+  }
+
+  private async applyRemoteData(data: SyncData): Promise<void> {
+    if (data.config) {
+      await configManager.init();
+      const dp = data.config.defaultProvider;
+      if (dp && typeof dp === 'string') await configManager.setDefaultProvider(dp as import('../types.js').ProviderType);
+    }
+    if (data.memory) console.log('[Sync] Remote memory data available');
+  }
+
+  private detectConflict(local: SyncData, remote: SyncData): SyncResult['changes'] | null {
+    if (Math.abs(new Date(local.timestamp).getTime() - new Date(remote.timestamp).getTime()) < 1000) return null;
+    const configDiff = JSON.stringify(local.config) !== JSON.stringify(remote.config);
+    const memoryDiff = JSON.stringify(local.memory) !== JSON.stringify(remote.memory);
+    return (configDiff || memoryDiff) ? { config: configDiff, memory: memoryDiff, plugins: false } : null;
+  }
+
+  private mergeData(local: SyncData, remote: SyncData): SyncData {
+    const localTime = new Date(local.timestamp).getTime();
+    const remoteTime = new Date(remote.timestamp).getTime();
+    return { version: SYNC_SCHEMA_VERSION, deviceId: this.deviceId, timestamp: new Date().toISOString(),
+      config: localTime > remoteTime ? local.config : remote.config,
+      memory: localTime > remoteTime ? local.memory : remote.memory,
+      plugins: localTime > remoteTime ? local.plugins : remote.plugins };
+  }
+
+  private getOrCreateDeviceId(): string { return `device-${this.simpleHash(`${os.hostname()}-${process.platform}-${os.userInfo().username}`)}`; }
+  private simpleHash(str: string): string { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h = h & h; } return Math.abs(h).toString(16).padStart(8, '0'); }
+  private successResult(action: 'upload' | 'download', timestamp: string): SyncResult { return { success: true, action, timestamp, changes: { config: true, memory: true, plugins: false } }; }
+  private errorResult(error: string): SyncResult { return { success: false, action: 'upload', timestamp: new Date().toISOString(), error }; }
+}
+
+export const syncManager = new SyncManager(DEFAULT_SYNC_CONFIG);
