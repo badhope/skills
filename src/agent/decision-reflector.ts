@@ -72,7 +72,10 @@ export class DecisionReflector {
         taskDecisions: Array.from(this.taskDecisions.entries()),
       };
       await fs.writeFile(this.filePath, JSON.stringify(data, null, 2));
-    } catch { /* 持久化失败不影响主流程 */ }
+    } catch (error) {
+      // Silent fail for persistence - log at debug level
+      console.debug('Failed to save decision reflector data:', error);
+    }
   }
 
   /** 防抖保存：最多每秒保存一次 */
@@ -108,7 +111,7 @@ export class DecisionReflector {
     confidence: number
   ): Promise<string> {
     const decision: Decision = {
-      id: `decision-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       taskId,
       description,
       context,
@@ -148,7 +151,7 @@ export class DecisionReflector {
     const { successes, failures, improvements } = this.analyzeDecisions(taskDecisions);
     const overallRating = this.calculateOverallRating(taskDecisions, successes, failures);
     const reflection: Reflection = {
-      id: `reflection-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `reflection-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       taskId,
       taskDescription,
       executionSummary,
@@ -181,7 +184,7 @@ export class DecisionReflector {
           improvements.push({
             id: `imp-${decision.id}`,
             category: this.inferCategory(decision),
-            priority: decision.outcome.success ? 'low' : 'high',
+            priority: 'high' as const,
             description: `决策 "${decision.description}" 未达到预期结果`,
             recommendation: this.generateRecommendation(decision),
             estimatedImpact: this.estimateImpact(decision)

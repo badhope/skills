@@ -11,6 +11,18 @@ import { SYNC_SCHEMA_VERSION } from './types.js';
 import { configManager } from '../config/manager.js';
 import { memoryManager } from '../memory/manager.js';
 
+function stripSecrets(config: Record<string, any>): Record<string, any> {
+  const sanitized = { ...config };
+  if (sanitized.providers) {
+    for (const [key, provider] of Object.entries(sanitized.providers)) {
+      if (provider && typeof provider === 'object' && 'apiKey' in provider) {
+        sanitized.providers[key] = { ...provider, apiKey: '***REDACTED***' };
+      }
+    }
+  }
+  return sanitized;
+}
+
 export interface BackupEntry {
   id: string;
   timestamp: string;
@@ -148,7 +160,7 @@ export class BackupManager {
     return {
       version: SYNC_SCHEMA_VERSION, deviceId: 'backup',
       timestamp: new Date().toISOString(),
-      config: JSON.parse(JSON.stringify(config)), memory,
+      config: stripSecrets(JSON.parse(JSON.stringify(config))), memory,
     };
   }
 }

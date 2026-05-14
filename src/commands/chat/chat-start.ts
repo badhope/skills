@@ -105,10 +105,11 @@ export const chatStartCommand = new Command('start')
     const personalityPrompt = personalityManager.getPersonalityPrompt();
     const commGuidance = personalityManager.getCommunicationGuidance();
     const codeGuidance = personalityManager.getCodeStyleGuidance();
+    const riskGuidance = personalityManager.getRiskGuidance();
     if (personalityPrompt) {
       messages.push({
         role: 'system',
-        content: `${personalityPrompt}\n\n沟通风格指导: ${commGuidance}\n代码风格指导: ${codeGuidance}`,
+        content: `${personalityPrompt}\n\n沟通风格指导: ${commGuidance}\n代码风格指导: ${codeGuidance}\n风险评估指导: ${riskGuidance}`,
       });
     }
 

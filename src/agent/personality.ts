@@ -96,8 +96,9 @@ export class PersonalityManager {
       const dir = path.dirname(this.filePath);
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(this.filePath, JSON.stringify(this.identity, null, 2), 'utf-8');
-    } catch {
-      // 保存失败不影响主流程
+    } catch (error) {
+      // Silent fail for persistence - log at debug level
+      console.debug('Failed to save personality data:', error);
     }
   }
 

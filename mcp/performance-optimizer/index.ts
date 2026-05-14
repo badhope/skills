@@ -66,7 +66,7 @@ export class PerformanceOptimizer {
 
     const newMetric: PerformanceMetric = {
       ...metric,
-      id: `metric-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `metric-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       timestamp: new Date()
     };
 

@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { injectable } from 'tsyringe';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { gitLogger } from '../services/logger.js';
 import type { GitCommit, GitDiff, GitStatus, GitResult } from './types.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Git 管理器 - 封装所有 Git 操作
@@ -22,8 +22,9 @@ export class GitManager {
   /** 执行 git 命令 */
   async exec(args: string, options?: { timeout?: number }): Promise<{ stdout: string; stderr: string }> {
     gitLogger.debug({ command: `git ${args}`, cwd: this.cwd }, 'Executing git command');
+    const argList = args.split(/\s+/);
     try {
-      const result = await execAsync(`git ${args}`, {
+      const result = await execFileAsync('git', argList, {
         cwd: this.cwd,
         encoding: 'utf8',
         timeout: options?.timeout || 30000,

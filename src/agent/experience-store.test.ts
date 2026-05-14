@@ -14,7 +14,7 @@ let store: ExperienceStore;
 
 function createTestExperience(overrides: Partial<Experience> = {}): Experience {
   return {
-    id: `exp-test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `exp-test-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
     timestamp: new Date().toISOString(),
     taskType: 'bug-fix',
     taskDescription: '修复登录页面的表单验证问题',

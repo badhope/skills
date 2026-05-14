@@ -34,7 +34,7 @@ export class ContextManager {
     return chineseChars + englishWords + Math.ceil(text.length / 4);
   }
   
-  addMessage(message: Omit<ContextMessage, 'timestamp'>): void {
+  async addMessage(message: Omit<ContextMessage, 'timestamp'>): Promise<void> {
     const msg: ContextMessage = {
       ...message,
       timestamp: Date.now(),
@@ -51,7 +51,7 @@ export class ContextManager {
     this.currentTokens += this.estimateTokens(msg.content);
     
     // 触发窗口管理
-    this.enforceWindowLimit();
+    await this.enforceWindowLimit();
   }
   
   private truncateContent(content: string, maxTokens: number): string {
@@ -139,20 +139,21 @@ export class ContextManager {
     return false;
   }
 
-  private enforceWindowLimit(): void {
+  private async enforceWindowLimit(): Promise<void> {
     // 先尝试 AI 压缩
     if (this.currentTokens > this.maxTokens && this.messages.length > 6 && !this.compressionAttempted) {
-      // 异步尝试压缩，如果失败则同步丢弃
-      this.tryCompressMessages().then(compressed => {
+      this.compressionAttempted = true;
+      try {
+        const compressed = await this.tryCompressMessages();
         if (!compressed) {
           this.dropOldMessages();
         }
         // 压缩成功后重置标记，允许后续再次压缩
         this.compressionAttempted = false;
-      }).catch(() => {
+      } catch {
         this.dropOldMessages();
         this.compressionAttempted = false;
-      });
+      }
       return;
     }
 
@@ -196,13 +197,13 @@ export class ContextManager {
   }
   
   // 添加工具执行结果，自动提取关键信息
-  addToolResult(toolName: string, result: string, success: boolean): void {
+  async addToolResult(toolName: string, result: string, success: boolean): Promise<void> {
     const importance = success ? 0.6 : 0.9; // 失败结果更重要
     const summary = result.length > 500 
       ? result.slice(0, 250) + '...(已截断)' + result.slice(-250)
       : result;
     
-    this.addMessage({
+    await this.addMessage({
       role: 'system',
       content: `[工具执行: ${toolName}]\n${summary}`,
       importance,

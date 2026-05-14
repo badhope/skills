@@ -10,6 +10,18 @@ import { createSyncProvider, type SyncProvider } from './provider.js';
 import { configManager } from '../config/manager.js';
 import { memoryManager } from '../memory/manager.js';
 
+function stripSecrets(config: Record<string, any>): Record<string, any> {
+  const sanitized = { ...config };
+  if (sanitized.providers) {
+    for (const [key, provider] of Object.entries(sanitized.providers)) {
+      if (provider && typeof provider === 'object' && 'apiKey' in provider) {
+        sanitized.providers[key] = { ...provider, apiKey: '***REDACTED***' };
+      }
+    }
+  }
+  return sanitized;
+}
+
 export class SyncManager {
   private provider: SyncProvider;
   private config: SyncConfig;
@@ -100,7 +112,7 @@ export class SyncManager {
     const config = configManager.getAllConfig();
     let memory: SyncData['memory'];
     try { await memoryManager.init(); memory = { conversations: await memoryManager.loadAllRecords(), knowledge: [] }; } catch { memory = undefined; }
-    return { version: SYNC_SCHEMA_VERSION, deviceId: this.deviceId, timestamp: new Date().toISOString(), config: JSON.parse(JSON.stringify(config)), memory };
+    return { version: SYNC_SCHEMA_VERSION, deviceId: this.deviceId, timestamp: new Date().toISOString(), config: stripSecrets(JSON.parse(JSON.stringify(config))), memory };
   }
 
   private async applyRemoteData(data: SyncData): Promise<void> {
@@ -113,10 +125,25 @@ export class SyncManager {
   }
 
   private detectConflict(local: SyncData, remote: SyncData): SyncResult['changes'] | null {
-    if (Math.abs(new Date(local.timestamp).getTime() - new Date(remote.timestamp).getTime()) < 1000) return null;
+    const localTime = new Date(local.timestamp).getTime();
+    const remoteTime = new Date(remote.timestamp).getTime();
+
+    // If content is identical, no conflict regardless of timing
+    if (JSON.stringify(local) === JSON.stringify(remote)) {
+      return null;
+    }
+
+    // If timestamps are very close (< 1 second), likely a conflict
+    if (Math.abs(localTime - remoteTime) < 1000) {
+      const configDiff = JSON.stringify(local.config) !== JSON.stringify(remote.config);
+      const memoryDiff = JSON.stringify(local.memory) !== JSON.stringify(remote.memory);
+      return { config: configDiff, memory: memoryDiff, plugins: false };
+    }
+
+    // Different content modified at different times = conflict
     const configDiff = JSON.stringify(local.config) !== JSON.stringify(remote.config);
     const memoryDiff = JSON.stringify(local.memory) !== JSON.stringify(remote.memory);
-    return (configDiff || memoryDiff) ? { config: configDiff, memory: memoryDiff, plugins: false } : null;
+    return { config: configDiff, memory: memoryDiff, plugins: false };
   }
 
   private mergeData(local: SyncData, remote: SyncData): SyncData {

@@ -12,6 +12,8 @@ export { TOKENS, type TokenType } from './tokens.js';
 export {
   container,
   registerCoreServices,
+  registerServices,
+  initializeContainer,
   getConfigManager,
   getMemoryManager,
   getGitManager,

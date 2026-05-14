@@ -7,6 +7,18 @@ import { formatBytes } from '../../utils/format.js';
 
 // ==================== 辅助函数 ====================
 
+function validatePath(filePath: string): string {
+  const resolved = path.resolve(filePath);
+  // Block access to sensitive system directories
+  const blocked = ['/etc', '/usr', '/bin', '/sbin', '/var', '/sys', '/proc', '/boot', '/dev'];
+  for (const dir of blocked) {
+    if (resolved.startsWith(dir + '/') || resolved === dir) {
+      throw new Error(`Access denied: cannot operate on system path ${filePath}`);
+    }
+  }
+  return resolved;
+}
+
 // ==================== 文件工具 ====================
 
 export const readFileTool: ToolDefinition = {
@@ -17,8 +29,9 @@ export const readFileTool: ToolDefinition = {
   ],
   execute: async (args) => {
     try {
-      const content = await fs.readFile(args.path, 'utf-8');
-      const stat = await fs.stat(args.path);
+      const safePath = validatePath(args.path);
+      const content = await fs.readFile(safePath, 'utf-8');
+      const stat = await fs.stat(safePath);
       return { success: true, output: content, _meta: `(${stat.size} bytes)` };
     } catch (error: any) {
       return { success: false, output: '', error: `读取失败: ${error.message}` };
@@ -35,9 +48,10 @@ export const writeFileTool: ToolDefinition = {
   ],
   execute: async (args) => {
     try {
-      await fs.mkdir(path.dirname(args.path), { recursive: true });
-      await fs.writeFile(args.path, args.content);
-      const stat = await fs.stat(args.path);
+      const safePath = validatePath(args.path);
+      await fs.mkdir(path.dirname(safePath), { recursive: true });
+      await fs.writeFile(safePath, args.content);
+      const stat = await fs.stat(safePath);
       return { success: true, output: `文件已写入: ${args.path} (${stat.size} bytes)` };
     } catch (error: any) {
       return { success: false, output: '', error: `写入失败: ${error.message}` };
@@ -177,15 +191,16 @@ export const deleteFileTool: ToolDefinition = {
   ],
   execute: async (args) => {
     try {
-      const stat = await fs.stat(args.path);
+      const safePath = validatePath(args.path);
+      const stat = await fs.stat(safePath);
       if (stat.isDirectory()) {
         if (args.recursive === 'true') {
-          await fs.rm(args.path, { recursive: true });
+          await fs.rm(safePath, { recursive: true });
         } else {
           return { success: false, output: '', error: '目录需要 recursive=true 参数' };
         }
       } else {
-        await fs.unlink(args.path);
+        await fs.unlink(safePath);
       }
       return { success: true, output: `已删除: ${args.path}` };
     } catch (error: any) {

@@ -238,7 +238,7 @@ export class AgentExecutor {
             step.result = await executeStep(step, context);
             this.output(chalk.green(`  ✓ 完成: ${step.description}`));
             agentLogger.info({ taskId: this.task.id, step: i, tool: step.tool }, 'Tool step completed');
-            this.contextManager.addToolResult(step.tool, step.result, true);
+            await this.contextManager.addToolResult(step.tool, step.result, true);
 
             // 记录决策结果（执行到此处说明步骤成功）
             if (this.currentDecisionId) {
@@ -330,7 +330,7 @@ export class AgentExecutor {
 
           // 将错误结果添加到上下文管理器
           if (step.tool) {
-            this.contextManager.addToolResult(step.tool, step.error || '执行失败', false);
+            await this.contextManager.addToolResult(step.tool, step.error || '执行失败', false);
           }
 
           // 如果是关键步骤失败，询问是否继续
@@ -410,7 +410,10 @@ export class AgentExecutor {
         // === 学习循环：将反思结果转化为经验并存储 ===
         try {
           // 1. 调用 generateImprovementReport 获取改进报告（触发报告生成逻辑）
-          await this.decisionReflector.generateImprovementReport();
+          const improvementReport = await this.decisionReflector.generateImprovementReport();
+          if (improvementReport) {
+            agentLogger.info({ report: improvementReport }, '改进报告已生成');
+          }
 
           // 2. 调用 learnFromExperience 提取教训
           const lessons = await this.decisionReflector.learnFromExperience(this.task.id);

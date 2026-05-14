@@ -23,8 +23,8 @@ import { generateStartupSuggestions, formatHealthCheckForCLI } from './agent/sta
 import { autonomousGoalManager } from './agent/autonomous-goals.js';
 
 // 注册 DI 容器服务（可选，用于未来的依赖注入迁移）
-import { registerCoreServices } from './di/index.js';
-registerCoreServices();
+import { initializeContainer } from './di/index.js';
+initializeContainer();
 
 const program = new Command();
 

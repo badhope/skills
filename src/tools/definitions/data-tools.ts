@@ -2,6 +2,24 @@ import fs from 'fs/promises';
 import { createHash } from 'crypto';
 import type { ToolDefinition } from '../registry.js';
 
+// ==================== 辅助函数 ====================
+
+function validateUrl(url: string): void {
+  const parsed = new URL(url);
+  // Block internal/private IPs
+  if (parsed.hostname === 'localhost' || 
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname.startsWith('192.168.') ||
+      parsed.hostname.startsWith('10.') ||
+      parsed.hostname.startsWith('172.') ||
+      parsed.hostname === '::1') {
+    throw new Error('Access denied: cannot request internal URLs');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Access denied: only http and https protocols are allowed');
+  }
+}
+
 // ==================== HTTP 请求工具 ====================
 
 export const httpTool: ToolDefinition = {
@@ -16,6 +34,7 @@ export const httpTool: ToolDefinition = {
   ],
   execute: async (args) => {
     try {
+      validateUrl(args.url);
       const method = (args.method || 'GET').toUpperCase();
       const timeout = args.timeout ? parseInt(args.timeout, 10) : 10000;
       const headers: Record<string, string> = args.headers
