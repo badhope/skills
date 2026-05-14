@@ -120,8 +120,8 @@ initConfigCommand
         printSuccess(`${info.displayName} [已配置]`);
         if (isLocalProvider) {
           console.log(`     ${chalk.green('✓ 本地运行，无需API Key')}`);
-        } else {
-          const maskedKey = providerConfig.apiKey!.substring(0, 8) + '...' + providerConfig.apiKey!.substring(providerConfig.apiKey!.length - 4);
+        } else if (providerConfig?.apiKey) {
+          const maskedKey = providerConfig.apiKey.substring(0, 8) + '...' + providerConfig.apiKey.substring(providerConfig.apiKey.length - 4);
           console.log(`     API Key: ${maskedKey}`);
         }
       } else {

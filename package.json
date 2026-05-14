@@ -47,6 +47,8 @@
     "inquirer": "^9.2.15",
     "ora": "^8.2.0",
     "picocolors": "^1.0.0",
+    "pino": "^8.17.0",
+    "pino-pretty": "^10.3.0",
     "reflect-metadata": "^0.2.1",
     "tree-sitter": "^0.25.0",
     "tree-sitter-javascript": "^0.25.0",
@@ -54,7 +56,8 @@
     "tree-sitter-typescript": "^0.23.2",
     "tsyringe": "^4.8.0",
     "uuid": "^14.0.0",
-    "wrap-ansi": "^10.0.0"
+    "wrap-ansi": "^10.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",

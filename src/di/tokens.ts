@@ -30,6 +30,11 @@ export const TOKENS = {
 
   // UI 组件
   DisplayManager: Symbol('DisplayManager'),
+
+  // Service 层
+  ChatService: Symbol('ChatService'),
+  AgentService: Symbol('AgentService'),
+  MemoryService: Symbol('MemoryService'),
 } as const;
 
 /**

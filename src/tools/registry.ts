@@ -11,6 +11,7 @@ import {
 } from './definitions/file-tools.js';
 import { shellTool, sysInfoTool } from './definitions/sys-tools.js';
 import { httpTool, jsonTool, textTool, hashTool } from './definitions/data-tools.js';
+import { toolLogger } from '../services/logger.js';
 
 // ============================================================
 // 接口定义
@@ -78,6 +79,7 @@ export class ToolRegistry {
    */
   register(tool: ToolDefinition): void {
     this.tools.set(tool.name, tool);
+    toolLogger.debug({ tool: tool.name }, 'Tool registered');
   }
 
   /**
@@ -107,13 +109,21 @@ export class ToolRegistry {
   async execute(name: string, args: Record<string, string>): Promise<ToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
+      toolLogger.warn({ tool: name }, 'Unknown tool requested');
       return {
         success: false,
         output: '',
         error: `未知工具: ${name}。可用工具: ${[...this.tools.keys()].join(', ')}`,
       };
     }
-    return tool.execute(args);
+    toolLogger.debug({ tool: name, args }, 'Executing tool');
+    const result = await tool.execute(args);
+    if (result.success) {
+      toolLogger.info({ tool: name }, 'Tool executed successfully');
+    } else {
+      toolLogger.error({ tool: name, error: result.error }, 'Tool execution failed');
+    }
+    return result;
   }
 
   /**

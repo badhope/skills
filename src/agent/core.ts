@@ -7,6 +7,7 @@ import { ContextManager } from './context-manager.js';
 import { ContextBuilder, contextBuilder, type KnowledgeEntry } from './context-builder.js';
 import { ChangeControlManager } from './change-control.js';
 import { DirtyProtect, AutoCommitEngine, CheckpointManager } from '../git/index.js';
+import { agentLogger } from '../services/logger.js';
 import chalk from 'chalk';
 import type { TaskStep, Task } from './types.js';
 import type { CodeIndex } from '../analysis/indexer/types.js';
@@ -79,19 +80,24 @@ export class AgentExecutor {
   }
 
   async run(): Promise<Task> {
+    agentLogger.info({ taskId: this.task.id, input: this.task.userInput }, 'Starting agent task');
     try {
       // === 阶段 0: Git 检查点 ===
       try {
         const checkpoint = new CheckpointManager(process.cwd());
         await checkpoint.create(`执行前自动检查点: ${this.task.userInput.substring(0, 50)}`);
+        agentLogger.debug({ taskId: this.task.id }, 'Git checkpoint created');
       } catch {
         // 非 Git 仓库时静默跳过
+        agentLogger.debug({ taskId: this.task.id }, 'Git checkpoint skipped (not a git repo)');
       }
 
       // === 阶段 1: 理解 ===
       this.output(chalk.dim('[1/5] 理解任务...'));
+      agentLogger.debug({ taskId: this.task.id }, 'Phase 1: Understanding task');
       const { intent } = recognizeIntent(this.task.userInput);
       this.task.intent = intent;
+      agentLogger.debug({ taskId: this.task.id, intent }, 'Intent recognized');
 
       // 构建上下文（Repo Map + Knowledge Graph + Code Index）
       this.output(chalk.dim('  📊 构建代码库上下文...'));
@@ -121,8 +127,10 @@ export class AgentExecutor {
 
       // === 阶段 2: 规划 ===
       this.output(chalk.dim('[2/5] 规划步骤...'));
+      agentLogger.debug({ taskId: this.task.id }, 'Phase 2: Planning steps');
       this.task.steps = await planTask(this.task.userInput, intent);
       this.task.status = 'executing';
+      agentLogger.info({ taskId: this.task.id, stepCount: this.task.steps.length }, 'Task planned');
 
       // 展示计划
       this.output(chalk.bold('\n📋 任务计划:'));
@@ -133,6 +141,7 @@ export class AgentExecutor {
 
       // === 阶段 3: 执行 ===
       this.output(chalk.dim('[3/5] 执行任务...'));
+      agentLogger.debug({ taskId: this.task.id }, 'Phase 3: Executing steps');
       const context: Record<string, unknown> = {};
 
       for (let i = 0; i < this.task.steps.length; i++) {
@@ -143,6 +152,7 @@ export class AgentExecutor {
 
         try {
           if (step.tool) {
+            agentLogger.debug({ taskId: this.task.id, step: i, tool: step.tool }, 'Executing tool step');
             if (!step.args || Object.keys(step.args).length === 0) {
               this.output(chalk.dim(`  🧠 AI 推理工具参数: ${chalk.cyan(step.tool)}...`));
               const previousContext = this.contextManager.getContext();
@@ -158,11 +168,13 @@ export class AgentExecutor {
             this.output(chalk.dim(`  → 执行工具: ${chalk.cyan(step.tool)} ${step.args ? JSON.stringify(step.args) : ''}...`));
             step.result = await executeStep(step, context);
             this.output(chalk.green(`  ✓ 完成: ${step.description}`));
+            agentLogger.info({ taskId: this.task.id, step: i, tool: step.tool }, 'Tool step completed');
             this.contextManager.addToolResult(step.tool, step.result, true);
 
             // 追踪文件变更（用于自动提交）
             if (step.tool === 'write_file' && step.args?.path) {
               this.changedFiles.push(String(step.args.path));
+              agentLogger.debug({ taskId: this.task.id, file: step.args.path }, 'File change tracked');
             }
           } else if (step.description.includes('反思')) {
             // 反思步骤 → 跳过（后面统一处理）
@@ -218,6 +230,7 @@ export class AgentExecutor {
         } catch (error) {
           step.status = 'error';
           step.error = error instanceof Error ? error.message : String(error);
+          agentLogger.error({ taskId: this.task.id, step: i, error: step.error }, 'Step execution failed');
           this.output(chalk.red(`  ✗ 失败: ${step.error}`));
           // 将错误结果添加到上下文管理器
           if (step.tool) {
@@ -238,6 +251,7 @@ export class AgentExecutor {
 
       // === 阶段 4: 验证 ===
       this.output(chalk.dim('[4/5] 验证结果...'));
+      agentLogger.debug({ taskId: this.task.id }, 'Phase 4: Validating results');
       this.task.result = this.task.steps
         .filter(s => s.status === 'done' && s.result)
         .map(s => s.result!)
@@ -245,6 +259,7 @@ export class AgentExecutor {
 
       // === 阶段 5: 反思 ===
       this.output(chalk.dim('[5/5] 反思总结...'));
+      agentLogger.debug({ taskId: this.task.id }, 'Phase 5: Reflection');
 
       // 找到反思步骤并调用 AI
       const reflectStep = this.task.steps.find(s => s.description.includes('反思'));
@@ -262,6 +277,7 @@ export class AgentExecutor {
         reflectStep.result = reflection;
         reflectStep.status = 'done';
         this.output(chalk.green('  ✓ 反思完成'));
+        agentLogger.debug({ taskId: this.task.id }, 'Reflection completed');
       }
 
       const summary = generateSummary(this.task);
@@ -270,6 +286,7 @@ export class AgentExecutor {
 
       this.task.status = 'completed';
       this.task.completedAt = Date.now();
+      agentLogger.info({ taskId: this.task.id, duration: this.task.completedAt - this.task.startedAt }, 'Task completed');
 
       // 保存到记忆
       await this.saveToMemory(summary);
@@ -293,6 +310,7 @@ export class AgentExecutor {
     } catch (error) {
       this.task.status = 'failed';
       this.task.result = error instanceof Error ? error.message : String(error);
+      agentLogger.error({ taskId: this.task.id, error: this.task.result }, 'Task failed');
       return this.task;
     }
   }
@@ -340,7 +358,9 @@ export class AgentExecutor {
         // Knowledge graph extraction is optional
       }
     } catch (error) {
-      console.warn(chalk.dim(`[记忆] 保存失败: ${error instanceof Error ? error.message : String(error)}`));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      agentLogger.warn({ taskId: this.task.id, error: errorMsg }, 'Failed to save to memory');
+      console.warn(chalk.dim(`[记忆] 保存失败: ${errorMsg}`));
     }
   }
 
@@ -351,7 +371,9 @@ export class AgentExecutor {
     try {
       return await this.contextBuilder.queryKnowledgeGraph(query);
     } catch (error) {
-      console.warn(chalk.dim(`[知识图谱] 查询失败: ${error instanceof Error ? error.message : String(error)}`));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      agentLogger.warn({ taskId: this.task.id, query, error: errorMsg }, 'Knowledge graph query failed');
+      console.warn(chalk.dim(`[知识图谱] 查询失败: ${errorMsg}`));
       return [];
     }
   }

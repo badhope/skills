@@ -1,5 +1,6 @@
-import type { Config, SandboxLevel } from './config-types.js';
+import type { SandboxLevel } from './config-types.js';
 import { PROJECT_DIR } from '../utils/index.js';
+import type { Config } from './schemas.js';
 
 // ============================================================
 // 沙盒权限常量
@@ -72,6 +73,7 @@ export const SANDBOX_PERMISSIONS: Record<SandboxLevel, {
 // ============================================================
 
 export const DEFAULT_CONFIG: Config = {
+  version: '1.0',
   providers: {
     openai: { timeout: 30000, maxRetries: 3 },
     anthropic: { timeout: 30000, maxRetries: 3 },

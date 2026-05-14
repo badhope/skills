@@ -3,6 +3,7 @@ import { injectable } from 'tsyringe';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { gitLogger } from '../services/logger.js';
 import type { GitCommit, GitDiff, GitStatus, GitResult } from './types.js';
 
 const execAsync = promisify(exec);
@@ -20,6 +21,7 @@ export class GitManager {
 
   /** 执行 git 命令 */
   async exec(args: string, options?: { timeout?: number }): Promise<{ stdout: string; stderr: string }> {
+    gitLogger.debug({ command: `git ${args}`, cwd: this.cwd }, 'Executing git command');
     try {
       const result = await execAsync(`git ${args}`, {
         cwd: this.cwd,
@@ -27,8 +29,10 @@ export class GitManager {
         timeout: options?.timeout || 30000,
         maxBuffer: 10 * 1024 * 1024,
       });
+      gitLogger.debug({ command: `git ${args}` }, 'Git command executed successfully');
       return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
     } catch (error: any) {
+      gitLogger.error({ command: `git ${args}`, error: error.stderr || error.message }, 'Git command failed');
       return { stdout: '', stderr: error.stderr || error.message || 'git command failed' };
     }
   }
@@ -107,13 +111,19 @@ export class GitManager {
 
   /** 暂存文件 */
   async stage(pattern: string): Promise<GitResult> {
+    gitLogger.debug({ pattern }, 'Staging files');
     const { stdout, stderr } = await this.exec(`add ${pattern}`);
-    if (stderr && !stdout) return { success: false, message: stderr };
+    if (stderr && !stdout) {
+      gitLogger.error({ pattern, error: stderr }, 'Failed to stage files');
+      return { success: false, message: stderr };
+    }
+    gitLogger.info({ pattern }, 'Files staged successfully');
     return { success: true, message: `已暂存: ${pattern}` };
   }
 
   /** 提交变更 */
   async commit(message: string, options?: { allowEmpty?: boolean; amend?: boolean }): Promise<GitResult> {
+    gitLogger.debug({ message, options }, 'Creating commit');
     let args = `commit -m ${JSON.stringify(message)} --allow-empty-message`;
     if (options?.allowEmpty) args += ' --allow-empty';
     if (options?.amend) args += ' --amend';
@@ -122,10 +132,13 @@ export class GitManager {
     if (stderr && !stdout) {
       // 检查是否是 "nothing to commit" 的情况
       if (stderr.includes('nothing to commit')) {
+        gitLogger.info('No changes to commit');
         return { success: false, message: '没有可提交的变更' };
       }
+      gitLogger.error({ message, error: stderr }, 'Commit failed');
       return { success: false, message: stderr };
     }
+    gitLogger.info({ message }, 'Commit created successfully');
     return { success: true, message: stdout || '提交成功' };
   }
 
@@ -199,9 +212,14 @@ export class GitManager {
 
   /** Stash 当前更改 */
   async stash(message?: string): Promise<GitResult> {
+    gitLogger.debug({ message }, 'Stashing changes');
     const args = message ? `stash push -m ${JSON.stringify(message)}` : 'stash push';
     const { stdout, stderr } = await this.exec(args);
-    if (stderr && !stdout) return { success: false, message: stderr };
+    if (stderr && !stdout) {
+      gitLogger.error({ message, error: stderr }, 'Stash failed');
+      return { success: false, message: stderr };
+    }
+    gitLogger.info({ message }, 'Changes stashed successfully');
     return { success: true, message: message ? `已暂存: ${message}` : '已暂存当前更改' };
   }
 

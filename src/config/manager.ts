@@ -4,12 +4,15 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ProviderType } from '../types.js';
 import { DEVFLOW_DIR } from '../utils/index.js';
-import type { Config, ManagerProviderConfig, SandboxLevel } from './config-types.js';
+import type { ManagerProviderConfig, SandboxLevel } from './config-types.js';
 import { SANDBOX_PERMISSIONS, DEFAULT_CONFIG } from './defaults.js';
+import { validateConfigWithLogging } from './validation.js';
+import type { Config } from './schemas.js';
 
 // Re-export 类型和常量
-export type { Config, ManagerProviderConfig, SandboxLevel };
+export type { ManagerProviderConfig, SandboxLevel };
 export { SANDBOX_PERMISSIONS, DEFAULT_CONFIG };
+export type { Config } from './schemas.js';
 
 /**
  * 配置管理器
@@ -57,7 +60,15 @@ export class ConfigManager {
     try {
       const data = await fs.readFile(this.configFile, 'utf-8');
       const loaded = JSON.parse(data);
-      this.config = this.mergeConfig(DEFAULT_CONFIG, loaded);
+
+      // 使用 Zod 验证配置
+      const validation = validateConfigWithLogging(loaded);
+      if (validation.valid && validation.config) {
+        this.config = this.mergeConfig(DEFAULT_CONFIG, validation.config);
+      } else {
+        console.warn('配置验证失败，使用默认配置');
+        this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+      }
     } catch (error) {
       console.error('加载配置失败:', error);
     }
@@ -77,8 +88,9 @@ export class ConfigManager {
   }
 
   async setProviderConfig(provider: ProviderType, config: Partial<ManagerProviderConfig>): Promise<void> {
+    const existing = this.config.providers[provider] || { timeout: 60000, maxRetries: 2 };
     this.config.providers[provider] = {
-      ...this.config.providers[provider],
+      ...existing,
       ...config,
     };
     await this.save();
@@ -195,6 +207,7 @@ export class ConfigManager {
 
   private mergeConfig(defaults: Config, loaded: Partial<Config>): Config {
     return {
+      version: loaded.version || defaults.version,
       providers: { ...defaults.providers, ...loaded.providers },
       defaultProvider: loaded.defaultProvider || defaults.defaultProvider,
       chat: { ...defaults.chat, ...loaded.chat },
