@@ -12,6 +12,7 @@ import { agentLogger } from '../services/logger.js';
 import { ExperienceStore, type Experience } from './experience-store.js';
 import { PersonalityManager } from './personality.js';
 import { EmotionalStateManager } from './emotional-state.js';
+import { projectConfigLoader } from '../config/project-config.js';
 import chalk from 'chalk';
 import type { TaskStep, Task } from './types.js';
 import type { CodeIndex } from '../analysis/indexer/types.js';
@@ -239,7 +240,7 @@ export class AgentExecutor {
                 taskDescription: this.task.userInput,
                 intent: this.task.intent || 'chat',
                 stepDescription: `为工具 "${step.tool}" 确定执行参数。步骤描述: ${step.description}。请以 JSON 格式输出参数，例如: {"command": "ls -la"} 或 {"path": "/src/index.ts", "content": "..."}`,
-                previousResults: this.getContextWithBuiltContext(),
+                previousResults: await this.getContextWithBuiltContext(),
                 availableTools: [step.tool],
               });
               step.args = parseToolArgsFromAI(step.tool, paramReasoning);
@@ -280,7 +281,7 @@ export class AgentExecutor {
               taskDescription: this.task.userInput,
               intent: this.task.intent || 'chat',
               stepDescription: step.description,
-              previousResults: this.getContextWithBuiltContext(),
+              previousResults: await this.getContextWithBuiltContext(),
               availableTools: [...toolRegistry.keys()],
             });
             step.result = reasoning;
@@ -377,7 +378,7 @@ export class AgentExecutor {
         const { content: reflection, corrections } = await reasonWithSelfCorrection(
           this.task.userInput,
           '反思执行过程，总结经验教训，评估完成度，提出改进建议',
-          this.getContextWithBuiltContext(),
+          await this.getContextWithBuiltContext(),
           [],
           2
         );
@@ -598,7 +599,7 @@ export class AgentExecutor {
    * 以及从历史经验中学习到的行为指导直接注入到 previousResults 的开头，
    * 避免被 addToolResult 截断。
    */
-  private getContextWithBuiltContext(): string[] {
+  private async getContextWithBuiltContext(): Promise<string[]> {
     const previousContext = this.contextManager.getContext().map(m => {
       if (typeof m.content === 'string') return m.content;
       if (Array.isArray(m.content)) {
@@ -623,6 +624,16 @@ export class AgentExecutor {
     // 注入从历史经验中学习到的行为指导（学习循环的核心）
     if (this.behaviorGuidelines) {
       parts.push(`[行为指导（基于${this.experienceStore.getExperienceCount()}次历史经验自动生成）]\n${this.behaviorGuidelines}`);
+    }
+
+    // 注入项目配置指令（DEVFLOW.md 等）
+    try {
+      const projectInstructions = await projectConfigLoader.getProjectInstructions(this.rootDir);
+      if (projectInstructions) {
+        parts.push(projectInstructions);
+      }
+    } catch {
+      // 项目配置加载失败不影响主流程
     }
 
     if (this.builtContext) {

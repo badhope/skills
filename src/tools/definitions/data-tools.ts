@@ -55,6 +55,55 @@ function validateUrl(url: string): void {
   }
 }
 
+// ==================== HTML 内容提取辅助函数 ====================
+
+/**
+ * 从 HTML 中提取正文内容，转换为简洁的 Markdown
+ */
+function extractHtmlContent(html: string, url: string): string {
+  let text = html;
+
+  // 移除 script 和 style 标签及其内容
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<noscript[\s\S]*?<\/noscript>/gi, '');
+
+  // 移除 HTML 注释
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+
+  // 将常见块级标签转换为换行
+  text = text.replace(/<\/?(p|div|br|h[1-6]|li|tr|blockquote|pre|section|article|header|footer|nav|main)[^>]*>/gi, '\n');
+
+  // 将行内标签移除
+  text = text.replace(/<[^>]+>/g, '');
+
+  // 解码 HTML 实体
+  text = text.replace(/&amp;/g, '&');
+  text = text.replace(/&lt;/g, '<');
+  text = text.replace(/&gt;/g, '>');
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+  text = text.replace(/&nbsp;/g, ' ');
+
+  // 将连续多个换行合并为最多两个
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  // 提取 title
+  const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+  let result = '';
+  if (titleMatch) {
+    result += `# ${titleMatch[1].trim()}\n\n`;
+  }
+  result += `来源: ${url}\n\n`;
+  result += text.trim().slice(0, 8000);
+
+  if (text.trim().length > 8000) {
+    result += '\n\n[内容过长，已截断]';
+  }
+
+  return result;
+}
+
 // ==================== HTTP 请求工具 ====================
 
 export const httpTool: ToolDefinition = {
@@ -93,18 +142,28 @@ export const httpTool: ToolDefinition = {
       clearTimeout(timer);
 
       const contentType = response.headers.get('content-type') || '';
-      let output: string;
+      let outputText: string;
 
       if (contentType.includes('json')) {
         const json = await response.json();
-        output = JSON.stringify(json, null, 2);
+        outputText = JSON.stringify(json, null, 2);
       } else {
-        output = await response.text();
+        outputText = await response.text();
+      }
+
+      // HTML 内容自动提取
+      if (contentType.includes('text/html') && outputText.includes('<html')) {
+        try {
+          outputText = extractHtmlContent(outputText, args.url);
+        } catch {
+          // 提取失败，返回原始 HTML（截断）
+          outputText = outputText.slice(0, 10000) + '\n\n[HTML 内容过长，已截断]';
+        }
       }
 
       return {
         success: response.ok,
-        output: `[${response.status} ${response.statusText}]\n\n${output.slice(0, 10000)}`,
+        output: `[${response.status} ${response.statusText}]\n\n${outputText.slice(0, 10000)}`,
         error: response.ok ? undefined : `HTTP ${response.status}`,
       };
     } catch (error: any) {

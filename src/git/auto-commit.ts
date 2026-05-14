@@ -1,5 +1,6 @@
 import type { AutoCommitConfig, GitResult } from './types.js';
 import { GitManager } from './manager.js';
+import { configManager } from '../config/manager.js';
 
 /** 默认自动提交配置 */
 export const DEFAULT_AUTO_COMMIT_CONFIG: AutoCommitConfig = {
@@ -62,8 +63,16 @@ export class AutoCommitEngine {
       await this.git.stage(file);
     }
 
-    // 生成提交信息
-    const commitMessage = this.generateCommitMessage(filesToCommit, taskDescription);
+    // 先尝试获取 diff，用于 AI 生成提交消息
+    const diffResult = await this.git.getDiff({ staged: true });
+    const useAI = (this.config as any).aiCommitMessage !== false;  // 默认启用
+
+    let commitMessage: string;
+    if (useAI && diffResult.patch.trim()) {
+      commitMessage = await this.generateAICommitMessage(diffResult.patch, filesToCommit);
+    } else {
+      commitMessage = this.generateCommitMessage(filesToCommit, taskDescription);
+    }
 
     // 设置 AI 作者信息
     await this.git.exec(`config --local user.name "${this.config.authorName}"`);
@@ -72,6 +81,47 @@ export class AutoCommitEngine {
     // 提交
     const result = await this.git.commit(commitMessage);
     return result;
+  }
+
+  /**
+   * 使用 AI 生成 Conventional Commits 格式的提交消息
+   */
+  private async generateAICommitMessage(diff: string, files: string[]): Promise<string> {
+    try {
+      const { callLLM } = await import('../agent/llm-caller.js');
+
+      const prompt = `根据以下 git diff 生成一个简洁的 Conventional Commits 格式的提交消息。
+
+规则：
+1. 使用中文
+2. 格式: <type>(<scope>): <subject>
+3. type: feat/fix/refactor/docs/style/test/chore/perf
+4. subject 不超过 50 个字符
+5. 如果有多个不相关的改动，使用多个 type，用 | 分隔
+6. 只输出提交消息，不要解释
+
+文件变更: ${files.join(', ')}
+
+Diff (截取前 3000 字符):
+${diff.slice(0, 3000)}`;
+
+      const defaultProvider = configManager.getDefaultProvider();
+      const providerConfig = defaultProvider ? configManager.getProviderConfig(defaultProvider) : undefined;
+
+      const response = await callLLM([{ role: 'user', content: prompt }], {
+        provider: defaultProvider,
+        model: providerConfig?.defaultModel,
+        maxTokens: 200,
+        temperature: 0.3,
+      });
+
+      // 清理响应
+      const message = (response || '').trim().replace(/^["']|["']$/g, '').replace(/\n+/g, '\n');
+      return message || this.generateCommitMessage(files, 'AI生成失败');
+    } catch {
+      // AI 生成失败，回退到模板
+      return this.generateCommitMessage(files, '自动提交');
+    }
   }
 
   /**

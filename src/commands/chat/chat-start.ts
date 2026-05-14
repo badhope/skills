@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { configManager } from '../../config/manager.js';
+import { projectConfigLoader } from '../../config/project-config.js';
 import { PROVIDER_INFO, PROVIDER_TYPE_LIST, type ProviderType } from '../../types.js';
 import { printHeader, printSection, printSuccess, printError, printInfo } from '../../ui/logo.js';
 import { interactiveHelp } from '../../ui/help.js';
@@ -103,6 +104,16 @@ export async function startInteractiveChat(options: StartChatOptions = {}): Prom
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = options.resumeMessages || [];
   const chatParams = getChatParams();
   const memoryConfig = configManager.getMemoryConfig();
+
+  // 加载项目配置（DEVFLOW.md 等）
+  try {
+    const projectConfig = await projectConfigLoader.load(process.cwd());
+    if (projectConfig.instructions) {
+      console.log(chalk.dim('  已加载项目配置 (DEVFLOW.md)'));
+    }
+  } catch {
+    // 项目配置加载失败不影响主流程
+  }
 
   // 生成会话 ID 并注册到全局状态追踪
   const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
