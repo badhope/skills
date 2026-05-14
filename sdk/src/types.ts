@@ -5,6 +5,121 @@
  */
 
 /**
+ * Standard API response wrapper.
+ */
+export interface ApiResponse<T = any> {
+  /** Whether the operation succeeded */
+  success: boolean;
+  /** Response data (if successful) */
+  data?: T;
+  /** Error information (if failed) */
+  error?: {
+    /** Error code */
+    code: string;
+    /** Human-readable error message */
+    message: string;
+    /** Additional error details */
+    details?: any;
+  };
+  /** ISO timestamp of the response */
+  timestamp: string;
+}
+
+/**
+ * Context builder options for building code context.
+ */
+export interface ContextBuilderOptions {
+  /** Project root directory */
+  rootDir: string;
+  /** Optional query to search for relevant code */
+  query?: string;
+  /** Maximum tokens for the context (default: 8000) */
+  maxTokens?: number;
+  /** Include knowledge graph entries (default: true) */
+  includeKnowledge?: boolean;
+  /** Include repo map (default: true) */
+  includeRepoMap?: boolean;
+  /** Include code search results (default: true) */
+  includeCodeSearch?: boolean;
+}
+
+/**
+ * Result of building context.
+ */
+export interface ContextBuildResult {
+  /** The assembled context string */
+  context: string;
+  /** Whether repo map was included */
+  repoMapIncluded: boolean;
+  /** Whether code search was included */
+  codeSearchIncluded: boolean;
+  /** Whether knowledge graph was included */
+  knowledgeIncluded: boolean;
+  /** Number of code entries found */
+  codeEntryCount: number;
+  /** Number of knowledge entries found */
+  knowledgeEntryCount: number;
+}
+
+/**
+ * Knowledge entry from the knowledge graph.
+ */
+export interface KnowledgeEntry {
+  /** Entry ID */
+  id: string;
+  /** Entry type (tech, concept, skill, etc.) */
+  type: string;
+  /** Entry label/name */
+  label: string;
+  /** Relevance score */
+  relevance: number;
+  /** Content snippet */
+  snippet?: string;
+}
+
+/**
+ * Result of a knowledge graph query.
+ */
+export interface KnowledgeQueryResult {
+  /** Query that was executed */
+  query: string;
+  /** Matching entries */
+  entries: KnowledgeEntry[];
+  /** Total entries found */
+  totalCount: number;
+}
+
+/**
+ * Change control statistics.
+ */
+export interface ChangeControlStats {
+  /** Total number of changes tracked */
+  total: number;
+  /** Breakdown by risk level */
+  byRisk: Record<string, number>;
+}
+
+/**
+ * Act mode configuration.
+ */
+export interface ActModeConfig {
+  /** LLM model to use */
+  model?: string;
+  /** Temperature for LLM generation */
+  temperature?: number;
+  /** Maximum tokens for LLM responses */
+  maxTokens?: number;
+  /** Whether to auto-approve all steps (skip confirmation) */
+  autoApprove?: boolean;
+  /** Skip write operations (dry-run mode) */
+  dryRun?: boolean;
+  /** Project root directory */
+  rootDir?: string;
+  /** Whether to enable change control */
+  enableChangeControl?: boolean;
+}
+
+/**
  * Options for configuring a DevFlow Agent instance.
  */
 export interface AgentOptions {

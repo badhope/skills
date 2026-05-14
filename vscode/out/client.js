@@ -33,11 +33,59 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DevFlowClient = void 0;
+exports.DevFlowClient = exports.NetworkError = exports.AuthenticationError = exports.NotFoundError = exports.ValidationError = exports.DevFlowError = void 0;
 const vscode = __importStar(require("vscode"));
 const cp = __importStar(require("child_process"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+// Unified Error Types matching backend
+class DevFlowError extends Error {
+    code;
+    statusCode;
+    details;
+    constructor(code, message, statusCode = 500, details) {
+        super(message);
+        this.code = code;
+        this.statusCode = statusCode;
+        this.details = details;
+        this.name = 'DevFlowError';
+    }
+}
+exports.DevFlowError = DevFlowError;
+class ValidationError extends DevFlowError {
+    constructor(message, details) {
+        super('VALIDATION_ERROR', message, 400, details);
+    }
+}
+exports.ValidationError = ValidationError;
+class NotFoundError extends DevFlowError {
+    constructor(resource) {
+        super('NOT_FOUND', `${resource} not found`, 404);
+    }
+}
+exports.NotFoundError = NotFoundError;
+class AuthenticationError extends DevFlowError {
+    constructor(message = 'Authentication required') {
+        super('AUTH_ERROR', message, 401);
+    }
+}
+exports.AuthenticationError = AuthenticationError;
+class NetworkError extends DevFlowError {
+    constructor(message, details) {
+        super('NETWORK_ERROR', message, 0, details);
+    }
+}
+exports.NetworkError = NetworkError;
+// Format error to unified format
+function formatError(error) {
+    if (error instanceof DevFlowError) {
+        return { code: error.code, message: error.message, details: error.details };
+    }
+    if (error instanceof Error) {
+        return { code: 'UNKNOWN_ERROR', message: error.message };
+    }
+    return { code: 'UNKNOWN_ERROR', message: String(error) };
+}
 class DevFlowClient {
     cliPath = null;
     outputChannel;
@@ -53,60 +101,213 @@ class DevFlowClient {
             this.outputChannel.appendLine(`DevFlow CLI found at: ${this.cliPath}`);
         }
     }
-    async runAgent(input, options) {
-        const args = ['agent', 'run', input];
-        if (options?.model) {
-            args.push('--model', options.model);
+    async runAgent(input, options, progress) {
+        try {
+            if (progress) {
+                progress.report({ message: 'Starting agent...' });
+            }
+            const args = ['agent', 'run', input];
+            if (options?.model) {
+                args.push('--model', options.model);
+            }
+            if (options?.planFirst) {
+                args.push('--plan');
+            }
+            if (progress) {
+                progress.report({ message: 'Executing agent task...' });
+            }
+            const output = await this.exec(args);
+            if (progress) {
+                progress.report({ message: 'Agent completed successfully' });
+            }
+            return {
+                success: true,
+                data: {
+                    success: true,
+                    output,
+                    steps: [],
+                    changedFiles: [],
+                    duration: 0,
+                },
+                timestamp: new Date().toISOString(),
+            };
         }
-        if (options?.planFirst) {
-            args.push('--plan');
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
-        return this.exec(args);
     }
-    async generateRepoMap() {
-        return this.exec(['agent', 'repo-map']);
+    async generateRepoMap(progress) {
+        try {
+            if (progress) {
+                progress.report({ message: 'Generating repository map...' });
+            }
+            const output = await this.exec(['agent', 'repo-map']);
+            if (progress) {
+                progress.report({ message: 'Repository map generated' });
+            }
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     async listPlugins() {
         try {
             const output = await this.exec(['plugins', 'list']);
-            return this.parsePluginList(output);
+            const plugins = this.parsePluginList(output);
+            return {
+                success: true,
+                data: plugins,
+                timestamp: new Date().toISOString(),
+            };
         }
-        catch {
-            return [];
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
     }
     async listMCPServices() {
         try {
             const output = await this.exec(['mcp', 'list']);
-            return this.parseMCPList(output);
+            const services = this.parseMCPList(output);
+            return {
+                success: true,
+                data: services,
+                timestamp: new Date().toISOString(),
+            };
         }
-        catch {
-            return [];
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
     }
     async enableMCP(name) {
-        await this.exec(['mcp', 'enable', name]);
+        try {
+            await this.exec(['mcp', 'enable', name]);
+            return {
+                success: true,
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     async disableMCP(name) {
-        await this.exec(['mcp', 'disable', name]);
+        try {
+            await this.exec(['mcp', 'disable', name]);
+            return {
+                success: true,
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     async gitCheckpoint(message) {
-        const args = ['git', 'checkpoint'];
-        if (message) {
-            args.push('--message', message);
+        try {
+            const args = ['git', 'checkpoint'];
+            if (message) {
+                args.push('--message', message);
+            }
+            const output = await this.exec(args);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
         }
-        return this.exec(args);
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     async gitUndo() {
-        return this.exec(['git', 'undo']);
+        try {
+            const output = await this.exec(['git', 'undo']);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     async chat(message) {
-        return this.exec(['chat', message]);
+        try {
+            const output = await this.exec(['chat', message]);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
     exec(args) {
         return new Promise((resolve, reject) => {
             if (!this.cliPath) {
-                reject(new Error('DevFlow CLI not found'));
+                reject(new NetworkError('DevFlow CLI not found'));
                 return;
             }
             const config = vscode.workspace.getConfiguration('devflow');
@@ -131,11 +332,13 @@ class DevFlowClient {
                     resolve(stdout.trim());
                 }
                 else {
-                    reject(new Error(`Command failed with code ${code}: ${stderr}`));
+                    // Parse error to determine type
+                    const errorMessage = stderr.trim() || `Command failed with code ${code}`;
+                    reject(new DevFlowError('COMMAND_FAILED', errorMessage, code || 500));
                 }
             });
             proc.on('error', (err) => {
-                reject(err);
+                reject(new NetworkError(`Failed to spawn process: ${err.message}`));
             });
         });
     }

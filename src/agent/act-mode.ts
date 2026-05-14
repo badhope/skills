@@ -15,6 +15,8 @@ import { executeStep } from './step-executor.js';
 import { recognizeIntent } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { detectIssues, generateTrustReport, askUserConfirmation, TrustLevel } from './trust.js';
+import { ContextBuilder } from './context-builder.js';
+import { ChangeControlManager } from './change-control.js';
 import type { ReasonerConfig } from './llm-caller.js';
 
 /** Act 模式配置 */
@@ -25,6 +27,10 @@ export interface ActModeConfig {
   autoApprove?: boolean;
   /** 跳过写入类工具（dry-run 模式） */
   dryRun?: boolean;
+  /** 项目根目录（用于构建上下文） */
+  rootDir?: string;
+  /** 是否启用变更控制 */
+  enableChangeControl?: boolean;
 }
 
 /** Act 步骤结果 */
@@ -45,6 +51,11 @@ export interface ActResult {
   allSuccess: boolean;
   /** 摘要 */
   summary: string;
+  /** 变更控制统计 */
+  changeControlStats?: {
+    total: number;
+    byRisk: Record<string, number>;
+  };
 }
 
 /**
@@ -63,6 +74,19 @@ export async function runActMode(
   const output = onOutput || ((text: string) => console.log(text));
   const startTime = Date.now();
   const stepResults: ActStepResult[] = [];
+  const contextBuilder = new ContextBuilder();
+  const changeControl = new ChangeControlManager();
+  const projectRoot = config?.rootDir || process.cwd();
+
+  // Disable change control if requested
+  if (config?.enableChangeControl === false) {
+    changeControl.setEnabled(false);
+  }
+
+  // If change control is disabled globally, apply config
+  if (config?.autoApprove) {
+    changeControl.setEnabled(false);
+  }
 
   // 如果没有 plan，自动规划
   let steps: TaskStep[];
@@ -72,8 +96,40 @@ export async function runActMode(
     steps = plan.steps;
     intent = plan.intent;
     output(chalk.cyan(`📋 按照已有计划执行 (${steps.length} 个步骤)`));
+
+    // 如果 plan 已经有上下文信息，显示它
+    if (plan.context) {
+      if (plan.context.repoMapIncluded) {
+        output(chalk.dim(`  ✓ 代码结构图已加载`));
+      }
+      if (plan.context.codeSearchIncluded) {
+        output(chalk.dim(`  ✓ 相关代码已加载 (${plan.context.codeEntryCount} 个)`));
+      }
+      if (plan.context.knowledgeIncluded) {
+        output(chalk.dim(`  ✓ 知识图谱已加载 (${plan.context.knowledgeEntryCount} 个)`));
+      }
+    }
   } else {
     output(chalk.cyan('📋 自动规划任务...'));
+
+    // 构建上下文
+    output(chalk.dim('📊 构建代码库上下文...'));
+    try {
+      const contextResult = await contextBuilder.build({
+        rootDir: projectRoot,
+        query: taskDescription,
+        maxTokens: 4000,
+        includeRepoMap: true,
+        includeKnowledge: true,
+        includeCodeSearch: true,
+      });
+      if (contextResult.repoMapIncluded) {
+        output(chalk.green(`  ✓ 代码结构图已生成 (${contextResult.codeEntryCount} 个符号)`));
+      }
+    } catch {
+      output(chalk.dim('  ⚠ 上下文构建失败'));
+    }
+
     const { intent: recognizedIntent } = recognizeIntent(taskDescription);
     intent = recognizedIntent;
     steps = await planTask(taskDescription, intent);
@@ -151,7 +207,28 @@ export async function runActMode(
         }
 
         output(chalk.dim(`  → ${step.tool} ${step.args ? JSON.stringify(step.args).slice(0, 80) : ''}...`));
-        result = await executeStep(step, context);
+
+        // 使用变更控制包装执行（对于写入类操作）
+        if (step.tool && isWriteTool(step.tool)) {
+          const targetPath = extractTargetPath(step.tool, step.args);
+          if (targetPath) {
+            const protectedResult = await changeControl.executeProtectedChange(
+              toolToAction(step.tool),
+              targetPath,
+              async () => {
+                return executeStep(step, context);
+              }
+            );
+            result = protectedResult.result as string;
+            if (!protectedResult.success) {
+              throw new Error('变更控制拒绝执行');
+            }
+          } else {
+            result = await executeStep(step, context);
+          }
+        } else {
+          result = await executeStep(step, context);
+        }
         previousResults.push(result);
         output(chalk.green('  ✓ 完成'));
       } else {
@@ -206,10 +283,47 @@ export async function runActMode(
     durationMs: Date.now() - startTime,
     allSuccess,
     summary: `完成 ${successCount}/${stepResults.length} 个步骤，耗时 ${(Date.now() - startTime) / 1000}s`,
+    changeControlStats: changeControl.getStats(),
   };
 }
 
 /** 判断是否为写入类工具 */
 function isWriteTool(tool: string): boolean {
   return ['write_file', 'delete_file', 'shell'].includes(tool);
+}
+
+/**
+ * 提取工具参数中的目标路径
+ */
+function extractTargetPath(tool: string, args?: Record<string, unknown>): string | null {
+  if (!args) return null;
+
+  switch (tool) {
+    case 'write_file':
+    case 'delete_file':
+    case 'read_file':
+      return args.path as string || null;
+    case 'shell':
+      return args.command as string || null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * 将工具名转换为变更控制动作
+ */
+function toolToAction(tool: string): 'create' | 'modify' | 'delete' | 'read' | 'shell' {
+  switch (tool) {
+    case 'write_file':
+      return 'create';
+    case 'delete_file':
+      return 'delete';
+    case 'shell':
+      return 'shell';
+    case 'read_file':
+      return 'read';
+    default:
+      return 'modify';
+  }
 }

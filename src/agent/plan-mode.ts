@@ -15,6 +15,7 @@ import { recognizeIntent } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { reasonStep } from './reasoner.js';
 import { executeStep } from './step-executor.js';
+import { ContextBuilder } from './context-builder.js';
 import type { TaskStep, Task } from './types.js';
 
 /** 只读工具集合（Plan 模式允许的工具） */
@@ -51,6 +52,14 @@ export interface PlanResult {
   risks: string[];
   /** 预估步骤数 */
   estimatedSteps: number;
+  /** 上下文信息（Repo Map, Knowledge Graph, Code Search） */
+  context?: {
+    repoMapIncluded: boolean;
+    codeSearchIncluded: boolean;
+    knowledgeIncluded: boolean;
+    codeEntryCount: number;
+    knowledgeEntryCount: number;
+  };
 }
 
 /** Plan 系统提示词 */
@@ -93,17 +102,45 @@ const PLAN_SYSTEM_PROMPT = `你是一位资深开发者的规划助手。用户�
  * @param taskDescription 任务描述
  * @param config LLM 配置
  * @param onOutput 输出回调
+ * @param rootDir 可选的项目根目录，用于构建上下文
  */
 export async function runPlanMode(
   taskDescription: string,
   config?: ReasonerConfig,
-  onOutput?: (text: string) => void
+  onOutput?: (text: string) => void,
+  rootDir?: string
 ): Promise<PlanResult> {
   const output = onOutput || ((text: string) => console.log(text));
+  const contextBuilder = new ContextBuilder();
+  const projectRoot = rootDir || process.cwd();
 
   // 1. 意图识别
   const { intent } = recognizeIntent(taskDescription);
   output(chalk.cyan(`🎯 意图: ${intent}`));
+
+  // 1.5 构建上下文（Repo Map + Knowledge Graph + Code Index）
+  output(chalk.dim('📊 构建代码库上下文...'));
+  let contextResult;
+  try {
+    contextResult = await contextBuilder.build({
+      rootDir: projectRoot,
+      query: taskDescription,
+      maxTokens: 4000,
+      includeRepoMap: true,
+      includeKnowledge: true,
+      includeCodeSearch: true,
+    });
+
+    if (contextResult.repoMapIncluded) {
+      output(chalk.green(`  ✓ 代码结构图已生成 (${contextResult.codeEntryCount} 个符号)`));
+    }
+    if (contextResult.knowledgeIncluded) {
+      output(chalk.green(`  ✓ 知识图谱已查询 (${contextResult.knowledgeEntryCount} 个相关条目)`));
+    }
+  } catch (error) {
+    output(chalk.dim(`  ⚠ 上下文构建失败: ${error instanceof Error ? error.message : String(error)}`));
+    contextResult = null;
+  }
 
   // 2. 基础规划
   const steps = await planTask(taskDescription, intent);
@@ -214,5 +251,12 @@ export async function runPlanMode(
     filesToModify,
     risks,
     estimatedSteps: steps.filter(s => s.tool && WRITE_TOOLS.has(s.tool)).length + steps.filter(s => !s.tool).length,
+    context: contextResult ? {
+      repoMapIncluded: contextResult.repoMapIncluded,
+      codeSearchIncluded: contextResult.codeSearchIncluded,
+      knowledgeIncluded: contextResult.knowledgeIncluded,
+      codeEntryCount: contextResult.codeEntryCount,
+      knowledgeEntryCount: contextResult.knowledgeEntryCount,
+    } : undefined,
   };
 }

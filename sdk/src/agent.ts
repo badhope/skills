@@ -5,7 +5,78 @@
  * AI-powered development tasks.
  */
 
-import type { AgentOptions, AgentResult, AgentStep } from './types.js';
+import type {
+  AgentOptions,
+  AgentResult,
+  AgentStep,
+  ActModeConfig,
+  ContextBuilderOptions,
+  ContextBuildResult,
+  KnowledgeEntry,
+} from './types.js';
+import { DevFlowError, formatError } from './errors.js';
+
+/**
+ * Plan result from plan mode.
+ * This type mirrors the backend PlanResult with SDK-friendly types.
+ */
+export interface PlanResult {
+  /** Task description */
+  taskDescription: string;
+  /** Recognized intent */
+  intent: string;
+  /** Planned steps */
+  steps: AgentStep[];
+  /** AI-generated detailed plan */
+  detailedPlan: string;
+  /** Files that need modification */
+  filesToModify: string[];
+  /** Potential risks */
+  risks: string[];
+  /** Estimated number of steps */
+  estimatedSteps: number;
+  /** Context information */
+  context?: {
+    repoMapIncluded: boolean;
+    codeSearchIncluded: boolean;
+    knowledgeIncluded: boolean;
+    codeEntryCount: number;
+    knowledgeEntryCount: number;
+  };
+}
+
+/**
+ * Act result from act mode execution.
+ */
+export interface ActResult {
+  /** Results of individual steps */
+  stepResults: ActStepResult[];
+  /** Total execution duration in milliseconds */
+  durationMs: number;
+  /** Whether all steps succeeded */
+  allSuccess: boolean;
+  /** Summary text */
+  summary: string;
+  /** Change control statistics */
+  changeControlStats?: {
+    total: number;
+    byRisk: Record<string, number>;
+  };
+}
+
+/**
+ * Result of a single act step.
+ */
+export interface ActStepResult {
+  /** The step that was executed */
+  step: AgentStep;
+  /** Whether the step succeeded */
+  success: boolean;
+  /** Error message (if failed) */
+  error?: string;
+  /** Step duration in milliseconds */
+  durationMs: number;
+}
 
 /**
  * DevFlowAgent - Main agent class for executing development tasks.
@@ -51,21 +122,21 @@ export class DevFlowAgent {
     const steps: AgentStep[] = [];
     const changedFiles: string[] = [];
 
-    // Dynamic import of core module
-    const { AgentExecutor } = await import('../../dist/agent/core.js');
-
-    const onStepChange = (step: any): void => {
-      steps[step.id] = step;
-      this.options.onStep?.(step);
-      this.emit('step', step);
-    };
-
-    const onOutput = (text: string): void => {
-      this.options.onOutput?.(text);
-      this.emit('output', text);
-    };
-
     try {
+      // Dynamic import of core module
+      const { AgentExecutor } = await import('../../dist/agent/core.js');
+
+      const onStepChange = (step: any): void => {
+        steps[step.id] = step;
+        this.options.onStep?.(step);
+        this.emit('step', step);
+      };
+
+      const onOutput = (text: string): void => {
+        this.options.onOutput?.(text);
+        this.emit('output', text);
+      };
+
       const executor = new AgentExecutor(input, onStepChange, onOutput);
       const task = await executor.run();
 
@@ -82,42 +153,173 @@ export class DevFlowAgent {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      return {
-        success: false,
-        output: error instanceof Error ? error.message : String(error),
-        steps,
-        changedFiles,
-        duration,
-      };
+
+      // Handle DevFlowError and re-throw with proper error handling
+      if (error instanceof DevFlowError) {
+        throw error;
+      }
+
+      // Wrap unknown errors
+      const formatted = formatError(error);
+      throw new DevFlowError(formatted.message, formatted.code, 500, formatted.details);
     }
   }
 
   /**
-   * Plan a task without executing it.
+   * Plan a task without executing it (Plan Mode).
+   *
+   * This runs the agent in read-only mode, generating a detailed
+   * execution plan that can be reviewed before execution.
    *
    * @param input - The task description
+   * @param options - Optional plan configuration
    * @returns The generated plan
+   *
+   * @example
+   * ```typescript
+   * const plan = await agent.plan('Add user authentication');
+   * console.log('Planned steps:', plan.steps.length);
+   * console.log('Files to modify:', plan.filesToModify);
+   * ```
    */
-  async plan(input: string): Promise<any> {
-    const { recognizeIntent } = await import('../../dist/agent/intent-recognizer.js');
-    const { planTask } = await import('../../dist/agent/task-planner.js');
+  async plan(input: string, options?: { rootDir?: string }): Promise<PlanResult> {
+    try {
+      const { runPlanMode } = await import('../../dist/agent/plan-mode.js');
 
-    const { intent } = recognizeIntent(input);
-    const steps = await planTask(input, intent);
+      const onOutput = (text: string): void => {
+        this.options.onOutput?.(text);
+        this.emit('output', text);
+      };
 
-    return { intent, steps };
+      const result = await runPlanMode(
+        input,
+        {
+          model: this.options.model,
+          temperature: this.options.temperature,
+          maxTokens: this.options.maxTokens,
+        },
+        onOutput,
+        options?.rootDir
+      );
+
+      return {
+        taskDescription: result.taskDescription,
+        intent: result.intent,
+        steps: result.steps.map((s, i) => this.convertStep(s, i)),
+        detailedPlan: result.detailedPlan,
+        filesToModify: result.filesToModify,
+        risks: result.risks,
+        estimatedSteps: result.estimatedSteps,
+        context: result.context,
+      };
+    } catch (error) {
+      if (error instanceof DevFlowError) {
+        throw error;
+      }
+      const formatted = formatError(error);
+      throw new DevFlowError(formatted.message, formatted.code, 500, formatted.details);
+    }
   }
 
   /**
-   * Execute a pre-generated plan.
+   * Execute a pre-generated plan (Act Mode).
    *
-   * @param plan - The plan to execute
+   * @param plan - The plan to execute (from plan() method)
+   * @param options - Optional execution configuration
    * @returns The execution result
+   *
+   * @example
+   * ```typescript
+   * const plan = await agent.plan('Add user authentication');
+   * // Review plan...
+   * const result = await agent.execute(plan);
+   * console.log('Changed files:', result.changedFiles);
+   * ```
    */
-  async execute(plan: any): Promise<AgentResult> {
-    // For now, delegate to run() with the plan description
-    // In a full implementation, this would execute the plan steps directly
-    return this.run(plan.description || 'Execute plan');
+  async execute(plan: PlanResult, options?: ActModeConfig): Promise<ActResult> {
+    try {
+      const { runActMode } = await import('../../dist/agent/act-mode.js');
+
+      const onOutput = (text: string): void => {
+        this.options.onOutput?.(text);
+        this.emit('output', text);
+      };
+
+      const backendPlan = {
+        taskDescription: plan.taskDescription,
+        intent: plan.intent,
+        steps: plan.steps.map(s => ({
+          id: s.id,
+          description: s.description,
+          tool: s.tool,
+          args: s.args,
+          status: s.status,
+          result: s.result,
+          error: s.error,
+        })),
+        filesToModify: plan.filesToModify,
+        risks: plan.risks,
+        estimatedSteps: plan.estimatedSteps,
+        context: plan.context,
+        detailedPlan: plan.detailedPlan,
+      };
+
+      const result = await runActMode(
+        backendPlan,
+        plan.taskDescription,
+        {
+          llm: {
+            model: options?.model ?? this.options.model,
+            temperature: options?.temperature ?? this.options.temperature,
+            maxTokens: options?.maxTokens ?? this.options.maxTokens,
+          },
+          autoApprove: options?.autoApprove,
+          dryRun: options?.dryRun,
+          rootDir: options?.rootDir,
+          enableChangeControl: options?.enableChangeControl,
+        },
+        onOutput
+      );
+
+      return {
+        stepResults: result.stepResults.map(sr => ({
+          step: this.convertStep(sr.step, sr.step.id || 0),
+          success: sr.success,
+          error: sr.error,
+          durationMs: sr.durationMs,
+        })),
+        durationMs: result.durationMs,
+        allSuccess: result.allSuccess,
+        summary: result.summary,
+        changeControlStats: result.changeControlStats,
+      };
+    } catch (error) {
+      if (error instanceof DevFlowError) {
+        throw error;
+      }
+      const formatted = formatError(error);
+      throw new DevFlowError(formatted.message, formatted.code, 500, formatted.details);
+    }
+  }
+
+  /**
+   * Access the context builder for building code context.
+   *
+   * @returns The context builder instance
+   *
+   * @example
+   * ```typescript
+   * const result = await agent.contextBuilder.build({
+   *   rootDir: './src',
+   *   query: 'authentication',
+   *   includeRepoMap: true,
+   *   includeKnowledge: true
+   * });
+   * console.log('Context:', result.context);
+   * ```
+   */
+  get contextBuilder(): ContextBuilderWrapper {
+    return new ContextBuilderWrapper(this.options.onOutput);
   }
 
   /**
@@ -187,6 +389,118 @@ export class DevFlowAgent {
     }
     return files;
   }
+
+  private convertStep(step: any, id: number): AgentStep {
+    return {
+      id: step.id ?? id,
+      description: step.description || '',
+      tool: step.tool,
+      args: step.args,
+      status: step.status || 'pending',
+      result: step.result,
+      error: step.error,
+    };
+  }
+}
+
+/**
+ * ContextBuilderWrapper - SDK wrapper for the backend ContextBuilder.
+ *
+ * Provides a clean interface for building code context from:
+ * - Repo Map: Codebase structure overview
+ * - Code Index: Searchable symbol index
+ * - Knowledge Graph: Prior context from memory
+ */
+export class ContextBuilderWrapper {
+  private onOutput?: (text: string) => void;
+
+  constructor(onOutput?: (text: string) => void) {
+    this.onOutput = onOutput;
+  }
+
+  /**
+   * Build a comprehensive context for the agent.
+   *
+   * @param options - Build options
+   * @returns Assembled context result
+   *
+   * @example
+   * ```typescript
+   * const result = await contextBuilder.build({
+   *   rootDir: './src',
+   *   query: 'authentication logic',
+   *   maxTokens: 8000,
+   *   includeRepoMap: true,
+   *   includeKnowledge: true,
+   *   includeCodeSearch: true
+   * });
+   * ```
+   */
+  async build(options: ContextBuilderOptions): Promise<ContextBuildResult> {
+    try {
+      const { ContextBuilder } = await import('../../dist/agent/context-builder.js');
+
+      const builder = new ContextBuilder();
+      const result = await builder.build({
+        rootDir: options.rootDir,
+        query: options.query,
+        maxTokens: options.maxTokens,
+        includeKnowledge: options.includeKnowledge,
+        includeRepoMap: options.includeRepoMap,
+        includeCodeSearch: options.includeCodeSearch,
+      });
+
+      return {
+        context: result.context,
+        repoMapIncluded: result.repoMapIncluded,
+        codeSearchIncluded: result.codeSearchIncluded,
+        knowledgeIncluded: result.knowledgeIncluded,
+        codeEntryCount: result.codeEntryCount,
+        knowledgeEntryCount: result.knowledgeEntryCount,
+      };
+    } catch (error) {
+      if (error instanceof DevFlowError) {
+        throw error;
+      }
+      const formatted = formatError(error);
+      throw new DevFlowError(formatted.message, formatted.code, 500, formatted.details);
+    }
+  }
+
+  /**
+   * Query the knowledge graph for relevant entries.
+   *
+   * @param query - Search query
+   * @returns Matching knowledge entries
+   *
+   * @example
+   * ```typescript
+   * const entries = await contextBuilder.queryKnowledge('React hooks');
+   * entries.forEach(e => console.log(`[${e.type}] ${e.label}`));
+   * ```
+   */
+  async queryKnowledge(query: string): Promise<KnowledgeEntry[]> {
+    try {
+      const { ContextBuilder } = await import('../../dist/agent/context-builder.js');
+
+      const builder = new ContextBuilder();
+      return await builder.queryKnowledgeGraph(query);
+    } catch (error) {
+      if (error instanceof DevFlowError) {
+        throw error;
+      }
+      const formatted = formatError(error);
+      throw new DevFlowError(formatted.message, formatted.code, 500, formatted.details);
+    }
+  }
+
+  /**
+   * Clear cached data (repo map, code index).
+   */
+  clearCache(): void {
+    // Note: The underlying builder doesn't expose clearCache publicly
+    // This is a placeholder for future implementation
+  }
 }
 
 /**
@@ -205,4 +519,40 @@ export class DevFlowAgent {
 export async function runAgent(input: string, options?: AgentOptions): Promise<AgentResult> {
   const agent = new DevFlowAgent(options);
   return agent.run(input);
+}
+
+/**
+ * Convenience function to plan a task without executing.
+ *
+ * @param input - The task description
+ * @param options - Optional agent configuration
+ * @returns The generated plan
+ *
+ * @example
+ * ```typescript
+ * const plan = await planTask('Add user authentication');
+ * console.log('Steps:', plan.steps.length);
+ * ```
+ */
+export async function planTask(input: string, options?: AgentOptions & { rootDir?: string }): Promise<PlanResult> {
+  const agent = new DevFlowAgent(options);
+  return agent.plan(input, { rootDir: options?.rootDir });
+}
+
+/**
+ * Convenience function to execute a pre-generated plan.
+ *
+ * @param plan - The plan to execute
+ * @param options - Optional execution configuration
+ * @returns The execution result
+ *
+ * @example
+ * ```typescript
+ * const plan = await planTask('Add user authentication');
+ * const result = await executePlan(plan, { autoApprove: true });
+ * ```
+ */
+export async function executePlan(plan: PlanResult, options?: ActModeConfig): Promise<ActResult> {
+  const agent = new DevFlowAgent();
+  return agent.execute(plan, options);
 }

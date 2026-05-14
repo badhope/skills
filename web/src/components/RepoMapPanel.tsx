@@ -10,8 +10,12 @@ function RepoMapPanel() {
     setLoading(true);
     setError(null);
     try {
-      const map = await generateRepoMap();
-      setRepoMap(map);
+      const response = await generateRepoMap();
+      if (response.success && response.data !== undefined) {
+        setRepoMap(response.data);
+      } else {
+        setError(response.error?.message || 'Failed to load repo map');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load repo map');
     } finally {

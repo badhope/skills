@@ -10,8 +10,12 @@ function MCPPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listMCPServices();
-      setServices(data);
+      const response = await listMCPServices();
+      if (response.success && response.data) {
+        setServices(response.data);
+      } else {
+        setError(response.error?.message || 'Failed to load MCP services');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load MCP services');
     } finally {
@@ -25,10 +29,14 @@ function MCPPanel() {
 
   const handleToggle = async (name: string, enabled: boolean) => {
     try {
-      await toggleMCPService(name, !enabled);
-      setServices((prev) =>
-        prev.map((s) => (s.name === name ? { ...s, enabled: !enabled } : s))
-      );
+      const response = await toggleMCPService(name, !enabled);
+      if (response.success) {
+        setServices((prev) =>
+          prev.map((s) => (s.name === name ? { ...s, enabled: !enabled } : s))
+        );
+      } else {
+        setError(response.error?.message || 'Failed to toggle service');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle service');
     }

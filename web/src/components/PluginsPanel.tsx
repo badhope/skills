@@ -10,8 +10,12 @@ function PluginsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await listPlugins();
-      setPlugins(data);
+      const response = await listPlugins();
+      if (response.success && response.data) {
+        setPlugins(response.data);
+      } else {
+        setError(response.error?.message || 'Failed to load plugins');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load plugins');
     } finally {
@@ -25,10 +29,14 @@ function PluginsPanel() {
 
   const handleToggle = async (name: string, enabled: boolean) => {
     try {
-      await togglePlugin(name, !enabled);
-      setPlugins((prev) =>
-        prev.map((p) => (p.name === name ? { ...p, enabled: !enabled } : p))
-      );
+      const response = await togglePlugin(name, !enabled);
+      if (response.success) {
+        setPlugins((prev) =>
+          prev.map((p) => (p.name === name ? { ...p, enabled: !enabled } : p))
+        );
+      } else {
+        setError(response.error?.message || 'Failed to toggle plugin');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle plugin');
     }

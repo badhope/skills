@@ -51,7 +51,16 @@ class PluginsViewProvider {
             return [];
         }
         try {
-            this.plugins = await this.client.listPlugins();
+            const response = await this.client.listPlugins();
+            if (response.success && response.data) {
+                this.plugins = response.data;
+            }
+            else {
+                this.plugins = [];
+                if (response.error) {
+                    vscode.window.showWarningMessage(`Failed to load plugins: ${response.error.message}`);
+                }
+            }
         }
         catch {
             this.plugins = [];

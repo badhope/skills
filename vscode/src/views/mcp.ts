@@ -19,7 +19,15 @@ export class MCPViewProvider implements vscode.TreeDataProvider<MCPItem> {
         }
 
         try {
-            this.services = await this.client.listMCPServices();
+            const response = await this.client.listMCPServices();
+            if (response.success && response.data) {
+                this.services = response.data;
+            } else {
+                this.services = [];
+                if (response.error) {
+                    vscode.window.showWarningMessage(`Failed to load MCP services: ${response.error.message}`);
+                }
+            }
         } catch {
             this.services = [];
         }
@@ -33,12 +41,17 @@ export class MCPViewProvider implements vscode.TreeDataProvider<MCPItem> {
 
     public async toggleService(item: MCPItem): Promise<void> {
         try {
+            let result;
             if (item.enabled) {
-                await this.client.disableMCP(item.name);
+                result = await this.client.disableMCP(item.name);
             } else {
-                await this.client.enableMCP(item.name);
+                result = await this.client.enableMCP(item.name);
             }
-            this.refresh();
+            if (result.success) {
+                this.refresh();
+            } else {
+                vscode.window.showErrorMessage(`Failed to toggle MCP service: ${result.error?.message || 'Unknown error'}`);
+            }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`Failed to toggle MCP service: ${errorMsg}`);

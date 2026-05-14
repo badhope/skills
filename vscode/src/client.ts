@@ -3,6 +3,66 @@ import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
+// Unified Error Types matching backend
+export class DevFlowError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly statusCode: number = 500,
+    public readonly details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'DevFlowError';
+  }
+}
+
+export class ValidationError extends DevFlowError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super('VALIDATION_ERROR', message, 400, details);
+  }
+}
+
+export class NotFoundError extends DevFlowError {
+  constructor(resource: string) {
+    super('NOT_FOUND', `${resource} not found`, 404);
+  }
+}
+
+export class AuthenticationError extends DevFlowError {
+  constructor(message: string = 'Authentication required') {
+    super('AUTH_ERROR', message, 401);
+  }
+}
+
+export class NetworkError extends DevFlowError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super('NETWORK_ERROR', message, 0, details);
+  }
+}
+
+// Format error to unified format
+function formatError(error: unknown): { code: string; message: string; details?: Record<string, unknown> } {
+  if (error instanceof DevFlowError) {
+    return { code: error.code, message: error.message, details: error.details };
+  }
+  if (error instanceof Error) {
+    return { code: 'UNKNOWN_ERROR', message: error.message };
+  }
+  return { code: 'UNKNOWN_ERROR', message: String(error) };
+}
+
+// Unified API Response type
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  timestamp: string;
+}
+
 export interface PluginInfo {
     name: string;
     version: string;
@@ -13,6 +73,19 @@ export interface MCPServiceInfo {
     name: string;
     description: string;
     enabled: boolean;
+}
+
+export interface AgentResult {
+    success: boolean;
+    output: string;
+    steps: unknown[];
+    changedFiles: string[];
+    duration: number;
+}
+
+// Progress reporting interface
+interface ProgressReporter {
+    report: (item: { message?: string; increment?: number }) => void;
 }
 
 export class DevFlowClient {
@@ -34,67 +107,225 @@ export class DevFlowClient {
         }
     }
 
-    async runAgent(input: string, options?: { model?: string; planFirst?: boolean }): Promise<string> {
-        const args = ['agent', 'run', input];
-        if (options?.model) {
-            args.push('--model', options.model);
+    async runAgent(
+        input: string,
+        options?: { model?: string; planFirst?: boolean },
+        progress?: ProgressReporter
+    ): Promise<ApiResponse<AgentResult>> {
+        try {
+            if (progress) {
+                progress.report({ message: 'Starting agent...' });
+            }
+
+            const args = ['agent', 'run', input];
+            if (options?.model) {
+                args.push('--model', options.model);
+            }
+            if (options?.planFirst) {
+                args.push('--plan');
+            }
+
+            if (progress) {
+                progress.report({ message: 'Executing agent task...' });
+            }
+
+            const output = await this.exec(args);
+
+            if (progress) {
+                progress.report({ message: 'Agent completed successfully' });
+            }
+
+            return {
+                success: true,
+                data: {
+                    success: true,
+                    output,
+                    steps: [],
+                    changedFiles: [],
+                    duration: 0,
+                },
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
-        if (options?.planFirst) {
-            args.push('--plan');
-        }
-        return this.exec(args);
     }
 
-    async generateRepoMap(): Promise<string> {
-        return this.exec(['agent', 'repo-map']);
+    async generateRepoMap(progress?: ProgressReporter): Promise<ApiResponse<string>> {
+        try {
+            if (progress) {
+                progress.report({ message: 'Generating repository map...' });
+            }
+
+            const output = await this.exec(['agent', 'repo-map']);
+
+            if (progress) {
+                progress.report({ message: 'Repository map generated' });
+            }
+
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
 
-    async listPlugins(): Promise<PluginInfo[]> {
+    async listPlugins(): Promise<ApiResponse<PluginInfo[]>> {
         try {
             const output = await this.exec(['plugins', 'list']);
-            return this.parsePluginList(output);
-        } catch {
-            return [];
+            const plugins = this.parsePluginList(output);
+            return {
+                success: true,
+                data: plugins,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
     }
 
-    async listMCPServices(): Promise<MCPServiceInfo[]> {
+    async listMCPServices(): Promise<ApiResponse<MCPServiceInfo[]>> {
         try {
             const output = await this.exec(['mcp', 'list']);
-            return this.parseMCPList(output);
-        } catch {
-            return [];
+            const services = this.parseMCPList(output);
+            return {
+                success: true,
+                data: services,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
     }
 
-    async enableMCP(name: string): Promise<void> {
-        await this.exec(['mcp', 'enable', name]);
-    }
-
-    async disableMCP(name: string): Promise<void> {
-        await this.exec(['mcp', 'disable', name]);
-    }
-
-    async gitCheckpoint(message?: string): Promise<string> {
-        const args = ['git', 'checkpoint'];
-        if (message) {
-            args.push('--message', message);
+    async enableMCP(name: string): Promise<ApiResponse<void>> {
+        try {
+            await this.exec(['mcp', 'enable', name]);
+            return {
+                success: true,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
         }
-        return this.exec(args);
     }
 
-    async gitUndo(): Promise<string> {
-        return this.exec(['git', 'undo']);
+    async disableMCP(name: string): Promise<ApiResponse<void>> {
+        try {
+            await this.exec(['mcp', 'disable', name]);
+            return {
+                success: true,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
 
-    async chat(message: string): Promise<string> {
-        return this.exec(['chat', message]);
+    async gitCheckpoint(message?: string): Promise<ApiResponse<string>> {
+        try {
+            const args = ['git', 'checkpoint'];
+            if (message) {
+                args.push('--message', message);
+            }
+            const output = await this.exec(args);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
+    }
+
+    async gitUndo(): Promise<ApiResponse<string>> {
+        try {
+            const output = await this.exec(['git', 'undo']);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
+    }
+
+    async chat(message: string): Promise<ApiResponse<string>> {
+        try {
+            const output = await this.exec(['chat', message]);
+            return {
+                success: true,
+                data: output,
+                timestamp: new Date().toISOString(),
+            };
+        } catch (error) {
+            const formatted = formatError(error);
+            this.outputChannel.appendLine(`Error: ${formatted.code} - ${formatted.message}`);
+            return {
+                success: false,
+                error: formatted,
+                timestamp: new Date().toISOString(),
+            };
+        }
     }
 
     private exec(args: string[]): Promise<string> {
         return new Promise((resolve, reject) => {
             if (!this.cliPath) {
-                reject(new Error('DevFlow CLI not found'));
+                reject(new NetworkError('DevFlow CLI not found'));
                 return;
             }
 
@@ -125,12 +356,14 @@ export class DevFlowClient {
                 if (code === 0) {
                     resolve(stdout.trim());
                 } else {
-                    reject(new Error(`Command failed with code ${code}: ${stderr}`));
+                    // Parse error to determine type
+                    const errorMessage = stderr.trim() || `Command failed with code ${code}`;
+                    reject(new DevFlowError('COMMAND_FAILED', errorMessage, code || 500));
                 }
             });
 
             proc.on('error', (err) => {
-                reject(err);
+                reject(new NetworkError(`Failed to spawn process: ${err.message}`));
             });
         });
     }

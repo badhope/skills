@@ -11,7 +11,7 @@ npm install @devflow/sdk
 ## Quick Start
 
 ```typescript
-import { runAgent, parseFile, generateRepoMap } from '@devflow/sdk';
+import { runAgent, parseFile, generateRepoMap, DevFlowError } from '@devflow/sdk';
 
 // Run agent
 const result = await runAgent('Add error handling to the auth module');
@@ -24,6 +24,15 @@ console.log(parsed.symbols);
 // Generate repo map
 const map = await generateRepoMap('./src');
 console.log(map);
+
+// Handle errors
+try {
+  await runAgent('Do something');
+} catch (error) {
+  if (error instanceof DevFlowError) {
+    console.error(`[${error.code}] ${error.message}`);
+  }
+}
 ```
 
 ## API Reference
@@ -61,6 +70,23 @@ if (result.success) {
 }
 ```
 
+#### Plan and Execute Mode
+
+The SDK supports a two-phase workflow inspired by Cline's Plan/Act mode:
+
+```typescript
+// Phase 1: Plan (read-only, generates execution plan)
+const plan = await agent.plan('Add user authentication', { rootDir: './src' });
+console.log('Planned steps:', plan.steps.length);
+console.log('Files to modify:', plan.filesToModify);
+console.log('Risks:', plan.risks);
+
+// Phase 2: Execute (runs the plan with full permissions)
+const result = await agent.execute(plan, { autoApprove: false });
+console.log('Summary:', result.summary);
+console.log('All steps succeeded:', result.allSuccess);
+```
+
 #### Agent Options
 
 | Option | Type | Default | Description |
@@ -73,15 +99,76 @@ if (result.success) {
 | `onStep` | `function` | - | Step progress callback |
 | `onOutput` | `function` | - | Output text callback |
 
-#### Convenience Function
+#### Convenience Functions
 
 ```typescript
-import { runAgent } from '@devflow/sdk';
+import { runAgent, planTask, executePlan } from '@devflow/sdk';
 
+// Run agent
 const result = await runAgent('Add tests for the API module', {
   model: 'gpt-4',
   temperature: 0.5
 });
+
+// Plan task
+const plan = await planTask('Add user authentication', { rootDir: './src' });
+
+// Execute plan
+const result = await executePlan(plan, { autoApprove: true });
+```
+
+### Context Builder
+
+The `ContextBuilder` class builds comprehensive context for the agent by combining:
+- **Repo Map**: Codebase structure overview
+- **Code Index**: Searchable symbol index
+- **Knowledge Graph**: Prior context from memory
+
+```typescript
+import { ContextBuilder } from '@devflow/sdk/parser';
+
+const builder = new ContextBuilder();
+const result = await builder.build({
+  rootDir: './src',
+  query: 'user authentication',
+  maxTokens: 8000,
+  includeRepoMap: true,
+  includeKnowledge: true,
+  includeCodeSearch: true
+});
+
+console.log('Context:', result.context);
+console.log('Repo map included:', result.repoMapIncluded);
+console.log('Code entries found:', result.codeEntryCount);
+console.log('Knowledge entries found:', result.knowledgeEntryCount);
+```
+
+Or via the agent:
+
+```typescript
+const agent = new DevFlowAgent();
+const result = await agent.contextBuilder.build({
+  rootDir: './src',
+  query: 'authentication'
+});
+```
+
+### Code Indexing
+
+Build a searchable index of code symbols:
+
+```typescript
+import { buildCodeIndex, searchIndex, CodeIndexer } from '@devflow/sdk/parser';
+
+// Build an index
+const index = await buildCodeIndex('./src');
+
+// Search the index
+const results = searchIndex(index, 'authentication', { maxResults: 10 });
+results.forEach(r => console.log(`${r.name} - ${r.filePath}`));
+
+// Or use the class API
+const index = await CodeIndexer.build('./src');
 ```
 
 ### Parser
@@ -191,6 +278,64 @@ mcpServers.forEach(s => {
 });
 ```
 
+### Error Handling
+
+The SDK provides unified error types that correspond to the backend:
+
+```typescript
+import { DevFlowError, ValidationError, NotFoundError, AuthenticationError, NetworkError, formatError } from '@devflow/sdk';
+
+try {
+  await agent.run('Do something');
+} catch (error) {
+  // Check error type
+  if (error instanceof DevFlowError) {
+    console.error(`[${error.code}] ${error.message}`);
+    console.error(`Status: ${error.statusCode}`);
+    if (error.details) {
+      console.error('Details:', error.details);
+    }
+  }
+
+  // Or use formatError for a simple object
+  const { code, message, details } = formatError(error);
+  console.error(`[${code}] ${message}`);
+}
+
+// Specific error types
+try {
+  // validation operation
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('Invalid input:', error.details);
+  }
+}
+
+try {
+  await agent.run('Access resource');
+} catch (error) {
+  if (error instanceof NotFoundError) {
+    console.error('Resource not found');
+  }
+}
+
+try {
+  await agent.run('API call');
+} catch (error) {
+  if (error instanceof AuthenticationError) {
+    console.error('Please authenticate');
+  }
+}
+
+try {
+  await agent.run('Network operation');
+} catch (error) {
+  if (error instanceof NetworkError) {
+    console.error('Network error:', error.details);
+  }
+}
+```
+
 ## Events
 
 The agent emits events during execution:
@@ -214,23 +359,6 @@ agent.on('error', (error: Error) => {
 });
 ```
 
-## Error Handling
-
-```typescript
-const result = await agent.run('Do something');
-
-if (!result.success) {
-  console.error('Task failed:', result.output);
-
-  // Check for failed steps
-  result.steps
-    .filter(s => s.status === 'error')
-    .forEach(s => {
-      console.error(`Step ${s.id} failed: ${s.error}`);
-    });
-}
-```
-
 ## TypeScript Support
 
 The SDK is written in TypeScript and provides full type definitions:
@@ -243,9 +371,27 @@ import type {
   ParseResult,
   Symbol,
   EditOptions,
-  PluginInfo
+  PluginInfo,
+  PlanResult,
+  ActResult,
+  ContextBuilderOptions,
+  ContextBuildResult,
+  KnowledgeEntry,
+  ChangeControlStats,
+  ApiResponse
 } from '@devflow/sdk';
 ```
+
+### New Types Added
+
+- **PlanResult**: Result from plan mode with steps, files, risks
+- **ActResult**: Result from act mode execution
+- **ContextBuilderOptions**: Options for building context
+- **ContextBuildResult**: Result of context building
+- **KnowledgeEntry**: Entry from the knowledge graph
+- **ChangeControlStats**: Statistics from change control
+- **ApiResponse**: Standard API response wrapper
+- **DevFlowError**: Base error class (re-exported from errors)
 
 ## License
 

@@ -12,8 +12,12 @@ function SettingsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getSettings();
-      setSettings(data);
+      const response = await getSettings();
+      if (response.success && response.data) {
+        setSettings(response.data);
+      } else {
+        setError(response.error?.message || 'Failed to load settings');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -31,8 +35,12 @@ function SettingsPanel() {
     setError(null);
     setSuccess(null);
     try {
-      await updateSettings(settings);
-      setSuccess('Settings saved successfully');
+      const response = await updateSettings(settings);
+      if (response.success) {
+        setSuccess('Settings saved successfully');
+      } else {
+        setError(response.error?.message || 'Failed to save settings');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {

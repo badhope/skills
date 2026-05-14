@@ -1,11 +1,15 @@
 import { toolRegistry } from '../tools/registry.js';
 import { memoryManager } from '../memory/manager.js';
+import { KnowledgeGraph } from '../memory/knowledgeGraph.js';
 import { reasonStep } from './reasoner.js';
 import { detectIssues, generateTrustReport, askUserConfirmation, TrustLevel } from './trust.js';
 import { ContextManager } from './context-manager.js';
+import { ContextBuilder, contextBuilder, type KnowledgeEntry } from './context-builder.js';
+import { ChangeControlManager } from './change-control.js';
 import { DirtyProtect, AutoCommitEngine, CheckpointManager } from '../git/index.js';
 import chalk from 'chalk';
 import type { TaskStep, Task } from './types.js';
+import type { CodeIndex } from '../analysis/indexer/types.js';
 
 // Re-export 类型
 export type { TaskStep, Task } from './types.js';
@@ -29,14 +33,26 @@ export class AgentExecutor {
   private onStepChange?: (step: TaskStep) => void;
   private onOutput?: (text: string) => void;
   private contextManager: ContextManager;
+  private contextBuilder: ContextBuilder;
   private dirtyProtect: DirtyProtect;
   private autoCommit: AutoCommitEngine;
+  private changeControl: ChangeControlManager;
+  private knowledgeGraph: KnowledgeGraph;
+  private repoMap?: string;
+  private codeIndex?: CodeIndex;
   private changedFiles: string[] = [];
+  private rootDir: string;
 
   constructor(
     userInput: string,
     onStepChange?: (step: TaskStep) => void,
-    onOutput?: (text: string) => void
+    onOutput?: (text: string) => void,
+    options?: {
+      rootDir?: string;
+      enableRepoMap?: boolean;
+      enableKnowledgeGraph?: boolean;
+      enableChangeControl?: boolean;
+    }
   ) {
     this.task = {
       id: crypto.randomUUID(),
@@ -49,8 +65,17 @@ export class AgentExecutor {
     this.onStepChange = onStepChange;
     this.onOutput = onOutput;
     this.contextManager = new ContextManager(8000);
+    this.contextBuilder = new ContextBuilder();
     this.dirtyProtect = new DirtyProtect(process.cwd());
     this.autoCommit = new AutoCommitEngine(process.cwd());
+    this.changeControl = new ChangeControlManager();
+    this.knowledgeGraph = new KnowledgeGraph();
+    this.rootDir = options?.rootDir || process.cwd();
+
+    // ChangeControl 默认启用
+    if (options?.enableChangeControl === false) {
+      this.changeControl.setEnabled(false);
+    }
   }
 
   async run(): Promise<Task> {
@@ -67,6 +92,32 @@ export class AgentExecutor {
       this.output(chalk.dim('[1/5] 理解任务...'));
       const { intent } = recognizeIntent(this.task.userInput);
       this.task.intent = intent;
+
+      // 构建上下文（Repo Map + Knowledge Graph + Code Index）
+      this.output(chalk.dim('  📊 构建代码库上下文...'));
+      try {
+        const contextResult = await this.contextBuilder.build({
+          rootDir: this.rootDir,
+          query: this.task.userInput,
+          maxTokens: 6000,
+          includeRepoMap: true,
+          includeKnowledge: true,
+          includeCodeSearch: true,
+        });
+
+        // Store repo map for later use
+        if (contextResult.repoMapIncluded) {
+          this.output(chalk.dim(`  ✓ 代码结构图已生成 (${contextResult.codeEntryCount} 个符号)`));
+        }
+
+        // Add context to the context manager
+        if (contextResult.context) {
+          this.contextManager.addToolResult('context_builder', contextResult.context, true);
+          this.output(chalk.dim(`  ✓ 知识图谱已查询 (${contextResult.knowledgeEntryCount} 个相关条目)`));
+        }
+      } catch (error) {
+        this.output(chalk.dim(`  ⚠ 上下文构建失败: ${error instanceof Error ? error.message : String(error)}`));
+      }
 
       // === 阶段 2: 规划 ===
       this.output(chalk.dim('[2/5] 规划步骤...'));
@@ -278,9 +329,56 @@ export class AgentExecutor {
         taskId: this.task.id,
         tags: ['agent', this.task.intent || 'chat'],
       });
+
+      // Also extract and save to knowledge graph
+      try {
+        await this.knowledgeGraph.init();
+        const records = await memoryManager.loadAllRecords();
+        const recentRecords = records.slice(0, 5);
+        await this.knowledgeGraph.extractFromMemory(recentRecords);
+      } catch {
+        // Knowledge graph extraction is optional
+      }
     } catch (error) {
       console.warn(chalk.dim(`[记忆] 保存失败: ${error instanceof Error ? error.message : String(error)}`));
     }
+  }
+
+  /**
+   * Query the knowledge graph for relevant context.
+   */
+  async queryKnowledgeGraph(query: string): Promise<KnowledgeEntry[]> {
+    try {
+      return await this.contextBuilder.queryKnowledgeGraph(query);
+    } catch (error) {
+      console.warn(chalk.dim(`[知识图谱] 查询失败: ${error instanceof Error ? error.message : String(error)}`));
+      return [];
+    }
+  }
+
+  /**
+   * Get the current repo map if available.
+   */
+  getRepoMap(): string | undefined {
+    return this.repoMap;
+  }
+
+  /**
+   * Get the change control manager for monitoring file changes.
+   */
+  getChangeControl(): ChangeControlManager {
+    return this.changeControl;
+  }
+
+  /**
+   * Execute a protected file operation with change control.
+   */
+  async executeProtected(
+    action: 'create' | 'modify' | 'delete' | 'read' | 'shell',
+    target: string,
+    executeFn: () => Promise<unknown>
+  ): Promise<{ success: boolean; result?: unknown }> {
+    return this.changeControl.executeProtectedChange(action, target, executeFn);
   }
 
   getTask(): Task {

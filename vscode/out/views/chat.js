@@ -40,9 +40,17 @@ class ChatViewProvider {
             // Show typing indicator
             this._view.webview.postMessage({ command: 'typing', isTyping: true });
             const response = await this.client.chat(text);
+            // Handle response based on unified ApiResponse format
+            let responseText;
+            if (response.success && response.data !== undefined) {
+                responseText = response.data;
+            }
+            else {
+                responseText = `Error: ${response.error?.message || 'Unknown error'} (${response.error?.code || 'UNKNOWN'})`;
+            }
             // Add assistant response to history
-            this.messageHistory.push({ role: 'assistant', content: response });
-            this._view.webview.postMessage({ command: 'response', text: response });
+            this.messageHistory.push({ role: 'assistant', content: responseText });
+            this._view.webview.postMessage({ command: 'response', text: responseText });
         }
         catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);

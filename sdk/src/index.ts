@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { runAgent, parseFile, generateRepoMap } from '@devflow/sdk';
+ * import { runAgent, parseFile, generateRepoMap, DevFlowError } from '@devflow/sdk';
  *
  * // Run agent
  * const result = await runAgent('Add error handling to the auth module');
@@ -18,6 +18,15 @@
  * // Generate repo map
  * const map = await generateRepoMap('./src');
  * console.log(map);
+ *
+ * // Handle errors
+ * try {
+ *   await runAgent('Do something');
+ * } catch (error) {
+ *   if (error instanceof DevFlowError) {
+ *     console.error(`[${error.code}] ${error.message}`);
+ *   }
+ * }
  * ```
  */
 
@@ -27,3 +36,4 @@ export * from './parser.js';
 export * from './editor.js';
 export * from './plugins.js';
 export * from './types.js';
+export * from './errors.js';

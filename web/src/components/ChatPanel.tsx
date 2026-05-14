@@ -33,10 +33,18 @@ function ChatPanel() {
 
     try {
       const response = await runAgent(userMessage.content);
+      let assistantContent: string;
+
+      if (response.success && response.data) {
+        assistantContent = response.data.output;
+      } else {
+        assistantContent = `Error: ${response.error?.message || 'Unknown error'} (${response.error?.code || 'UNKNOWN'})`;
+      }
+
       const assistantMessage: Message = {
         id: Date.now() + 1,
         role: 'assistant',
-        content: response,
+        content: assistantContent,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {

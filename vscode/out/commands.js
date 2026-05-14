@@ -48,14 +48,20 @@ function registerCommands(context, client) {
             const autoCheckpoint = config.get('autoCheckpoint');
             try {
                 if (autoCheckpoint) {
-                    await client.gitCheckpoint('Auto-checkpoint before agent run');
+                    const checkpointResult = await client.gitCheckpoint('Auto-checkpoint before agent run');
+                    if (!checkpointResult.success) {
+                        vscode.window.showWarningMessage('Auto-checkpoint failed, continuing anyway...');
+                    }
                 }
                 await vscode.window.withProgress({
                     location: vscode.ProgressLocation.Notification,
                     title: 'DevFlow Agent running...',
                     cancellable: false
-                }, async () => {
-                    const result = await client.runAgent(input, { model });
+                }, async (progress) => {
+                    const result = await client.runAgent(input, { model }, progress);
+                    if (!result.success) {
+                        throw new Error(result.error?.message || 'Agent failed');
+                    }
                     return result;
                 });
                 vscode.window.showInformationMessage('DevFlow completed successfully');
@@ -73,15 +79,23 @@ function registerCommands(context, client) {
     // devflow.generateRepoMap
     context.subscriptions.push(vscode.commands.registerCommand('devflow.generateRepoMap', async () => {
         try {
-            const map = await vscode.window.withProgress({
+            const result = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'Generating repository map...'
-            }, () => client.generateRepoMap());
-            const doc = await vscode.workspace.openTextDocument({
-                content: map,
-                language: 'markdown'
+            }, async (progress) => {
+                const response = await client.generateRepoMap(progress);
+                if (!response.success) {
+                    throw new Error(response.error?.message || 'Failed to generate repo map');
+                }
+                return response.data;
             });
-            vscode.window.showTextDocument(doc);
+            if (result) {
+                const doc = await vscode.workspace.openTextDocument({
+                    content: result,
+                    language: 'markdown'
+                });
+                vscode.window.showTextDocument(doc);
+            }
         }
         catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err);
@@ -91,7 +105,11 @@ function registerCommands(context, client) {
     // devflow.showPlugins
     context.subscriptions.push(vscode.commands.registerCommand('devflow.showPlugins', async () => {
         try {
-            const plugins = await client.listPlugins();
+            const response = await client.listPlugins();
+            if (!response.success) {
+                throw new Error(response.error?.message || 'Failed to list plugins');
+            }
+            const plugins = response.data || [];
             const items = plugins.map(p => ({
                 label: p.name,
                 description: `v${p.version}`,
@@ -112,7 +130,11 @@ function registerCommands(context, client) {
     // devflow.enableMCP
     context.subscriptions.push(vscode.commands.registerCommand('devflow.enableMCP', async () => {
         try {
-            const services = await client.listMCPServices();
+            const response = await client.listMCPServices();
+            if (!response.success) {
+                throw new Error(response.error?.message || 'Failed to list MCP services');
+            }
+            const services = response.data || [];
             const items = services.map(s => ({
                 label: s.name,
                 description: s.description,
@@ -124,7 +146,10 @@ function registerCommands(context, client) {
             });
             if (selected) {
                 for (const item of selected) {
-                    await client.enableMCP(item.label);
+                    const toggleResult = await client.enableMCP(item.label);
+                    if (!toggleResult.success) {
+                        vscode.window.showWarningMessage(`Failed to enable ${item.label}`);
+                    }
                 }
                 vscode.window.showInformationMessage('MCP services updated');
             }
@@ -143,7 +168,10 @@ function registerCommands(context, client) {
         if (message !== undefined) {
             try {
                 const result = await client.gitCheckpoint(message || undefined);
-                vscode.window.showInformationMessage(`Checkpoint created: ${result}`);
+                if (!result.success) {
+                    throw new Error(result.error?.message || 'Checkpoint failed');
+                }
+                vscode.window.showInformationMessage(`Checkpoint created: ${result.data}`);
             }
             catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
@@ -157,7 +185,10 @@ function registerCommands(context, client) {
         if (confirm === 'Yes') {
             try {
                 const result = await client.gitUndo();
-                vscode.window.showInformationMessage(`Undo completed: ${result}`);
+                if (!result.success) {
+                    throw new Error(result.error?.message || 'Undo failed');
+                }
+                vscode.window.showInformationMessage(`Undo completed: ${result.data}`);
             }
             catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err);
