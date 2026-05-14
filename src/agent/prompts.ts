@@ -4,6 +4,9 @@
  * 根据意图类型选择不同的 system prompt，每种意图对应一个专业角色。
  */
 
+import { autonomousGoalManager } from './autonomous-goals.js';
+import { formatGoalsForSystemPrompt } from './startup-suggestions.js';
+
 /**
  * 思考要求 - 附加到所有 system prompt 的通用 CoT 指令
  */
@@ -100,3 +103,26 @@ ${THINKING_INSTRUCTIONS}`,
 - 用中文回答
 ${THINKING_INSTRUCTIONS}`,
 };
+
+/**
+ * 获取带自主目标附加信息的系统提示词
+ *
+ * 当 Agent 有待处理的自主发现目标时，将其附加到系统提示词末尾，
+ * 让 AI 了解项目当前的问题状态，在回答时可以参考这些信息。
+ */
+export async function getSystemPromptWithGoals(intent: string): Promise<string> {
+  const basePrompt = SYSTEM_PROMPTS[intent] || SYSTEM_PROMPTS['default'];
+
+  try {
+    const pendingGoals = await autonomousGoalManager.getPendingGoals();
+    if (pendingGoals.length === 0) {
+      return basePrompt;
+    }
+
+    const goalsSection = formatGoalsForSystemPrompt(pendingGoals);
+    return `${basePrompt}\n\n${goalsSection}`;
+  } catch {
+    // 获取目标失败，返回基础提示词
+    return basePrompt;
+  }
+}

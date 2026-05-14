@@ -16,6 +16,10 @@ import { AgentService } from '../services/agent-service.js';
 import { MemoryService } from '../services/memory-service.js';
 import { CompressionService } from '../services/compression-service.js';
 
+// 导入人格与情绪系统
+import { PersonalityManager } from '../agent/personality.js';
+import { EmotionalStateManager } from '../agent/emotional-state.js';
+
 // ============================================================
 // 依赖注入容器配置
 // ============================================================
@@ -60,6 +64,12 @@ export function registerServices(): void {
 
   // CompressionService - 单例
   container.register(TOKENS.CompressionService, { useClass: CompressionService }, { lifecycle: Lifecycle.Singleton });
+
+  // PersonalityManager - 单例
+  container.register(TOKENS.PersonalityManager, { useClass: PersonalityManager }, { lifecycle: Lifecycle.Singleton });
+
+  // EmotionalStateManager - 单例
+  container.register(TOKENS.EmotionalStateManager, { useClass: EmotionalStateManager }, { lifecycle: Lifecycle.Singleton });
 }
 
 /**
@@ -110,6 +120,14 @@ export function getAgentService(): AgentService {
 
 export function getMemoryService(): MemoryService {
   return container.resolve<MemoryService>(TOKENS.MemoryService);
+}
+
+export function getPersonalityManager(): PersonalityManager {
+  return container.resolve<PersonalityManager>(TOKENS.PersonalityManager);
+}
+
+export function getEmotionalStateManager(): EmotionalStateManager {
+  return container.resolve<EmotionalStateManager>(TOKENS.EmotionalStateManager);
 }
 
 // 导出容器实例（用于高级用例）

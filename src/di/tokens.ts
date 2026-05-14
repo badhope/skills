@@ -36,6 +36,10 @@ export const TOKENS = {
   AgentService: Symbol('AgentService'),
   MemoryService: Symbol('MemoryService'),
   CompressionService: Symbol('CompressionService'),
+
+  // 人格与情绪
+  PersonalityManager: Symbol('PersonalityManager'),
+  EmotionalStateManager: Symbol('EmotionalStateManager'),
 } as const;
 
 /**

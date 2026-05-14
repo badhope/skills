@@ -2,12 +2,14 @@ import 'reflect-metadata';
 import { injectable } from 'tsyringe';
 import { MEMORY_DIR } from '../utils/index.js';
 import { ragModule } from './rag.js';
+import { MemoryConsolidator, type ConsolidationConfig, type ConsolidationResult } from './consolidation.js';
 import fs from 'fs/promises';
 import path from 'path';
 import type { MemoryInteraction, MemoryRecord, MemoryStats } from './memory-types.js';
 
 // Re-export 类型
 export type { MemoryInteraction, MemoryRecord, MemoryStats };
+export type { ConsolidationConfig, ConsolidationResult };
 
 /**
  * 统一记忆管理器
@@ -19,9 +21,11 @@ export class MemoryManager {
   private initialized = false;
   private ragEnabled: boolean = false;
   private ragInitialized: boolean = false;
+  private consolidator: MemoryConsolidator;
 
-  constructor() {
+  constructor(consolidationConfig?: Partial<ConsolidationConfig>) {
     this.storagePath = MEMORY_DIR;
+    this.consolidator = new MemoryConsolidator(consolidationConfig);
   }
 
   async init(): Promise<void> {
@@ -129,6 +133,25 @@ export class MemoryManager {
         } catch { /* skip */ }
       }
 
+      // 应用遗忘曲线衰减重要性
+      this.consolidator.applyForgettingCurve(
+        records.map(r => ({
+          id: r.id,
+          importance: (r as any).importance ?? 0.5,
+          createdAt: r.timestamp,
+          stability: (r as any).stability,
+          accessCount: (r as any).accessCount,
+        })),
+      );
+
+      // 自动整合：记忆数量超过上限时触发
+      const config = this.consolidator.getConfig();
+      if (config.autoConsolidateOnLoad && records.length > config.maxShortTermMemories) {
+        this.consolidator.runConsolidationCycle(this.storagePath).catch(err => {
+          console.warn('[记忆] 自动整合失败:', err);
+        });
+      }
+
       return records.sort((a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
@@ -190,10 +213,38 @@ export class MemoryManager {
       return { interaction: record, relevance };
     });
 
-    return scored
+    const results = scored
       .filter(r => r.relevance > 0)
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, limit);
+
+    // 强化被访问的记忆（模拟复习效果）
+    for (const result of results) {
+      this.consolidator.reinforceMemory({
+        id: result.interaction.id,
+        importance: (result.interaction as any).importance ?? result.relevance,
+        createdAt: result.interaction.timestamp,
+        stability: (result.interaction as any).stability,
+        accessCount: (result.interaction as any).accessCount,
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * 运行记忆整合周期
+   */
+  async consolidate(): Promise<ConsolidationResult> {
+    await this.init();
+    return this.consolidator.runConsolidationCycle(this.storagePath);
+  }
+
+  /**
+   * 获取整合器配置
+   */
+  getConsolidationConfig(): ConsolidationConfig {
+    return this.consolidator.getConfig();
   }
 
   /**

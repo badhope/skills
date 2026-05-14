@@ -8,6 +8,8 @@ import { interactiveHelp } from '../../ui/help.js';
 import { memoryManager } from '../../memory/manager.js';
 import { checkApiKey, createProviderInstance, getChatParams } from './helpers.js';
 import { executeSlashCommand } from '../slash-commands.js';
+import { PersonalityManager } from '../../agent/personality.js';
+import { EmotionalStateManager } from '../../agent/emotional-state.js';
 
 export const chatStartCommand = new Command('start')
   .alias('s')
@@ -93,6 +95,23 @@ export const chatStartCommand = new Command('start')
     const chatParams = getChatParams();
     const memoryConfig = configManager.getMemoryConfig();
 
+    // 初始化人格和情绪系统
+    const personalityManager = new PersonalityManager();
+    const emotionalState = new EmotionalStateManager();
+    await personalityManager.load();
+    personalityManager.incrementInteractions();
+
+    // 注入人格 system prompt
+    const personalityPrompt = personalityManager.getPersonalityPrompt();
+    const commGuidance = personalityManager.getCommunicationGuidance();
+    const codeGuidance = personalityManager.getCodeStyleGuidance();
+    if (personalityPrompt) {
+      messages.push({
+        role: 'system',
+        content: `${personalityPrompt}\n\n沟通风格指导: ${commGuidance}\n代码风格指导: ${codeGuidance}`,
+      });
+    }
+
     // 对话循环
     while (true) {
       if (!process.stdin.isTTY) {
@@ -149,6 +168,29 @@ export const chatStartCommand = new Command('start')
       }
 
       messages.push({ role: 'user', content: userInput });
+
+      // 检测用户情绪信号，更新情绪状态
+      if (/谢谢|感谢|厉害|不错|好的|很好|棒|perfect|great|thanks/i.test(userInput)) {
+        emotionalState.onUserPraise(userInput);
+      } else if (/不对|错了|不是这样|纠正|修正|wrong|incorrect/i.test(userInput)) {
+        emotionalState.onUserCorrection(userInput);
+      } else if (/新|挑战|试试|尝试|从零|novel|challenge/i.test(userInput)) {
+        emotionalState.onNewChallenge(userInput);
+      }
+
+      // 情绪衰减
+      emotionalState.decay();
+
+      // 注入当前情绪上下文
+      const emotionalContext = emotionalState.getEmotionalContext();
+      if (emotionalContext) {
+        // 移除上一轮注入的情绪 system message（避免重复累积）
+        const emotionSysIdx = messages.findIndex(m => m.role === 'system' && m.content.startsWith('[当前情绪状态]'));
+        if (emotionSysIdx !== -1) {
+          messages.splice(emotionSysIdx, 1);
+        }
+        messages.push({ role: 'system', content: emotionalContext });
+      }
 
       try {
         process.stdout.write(chalk.green('  AI: '));
@@ -231,4 +273,7 @@ export const chatStartCommand = new Command('start')
         console.log();
       }
     }
+
+    // 对话结束，保存人格状态
+    await personalityManager.save().catch(() => {});
   });

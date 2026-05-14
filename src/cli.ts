@@ -15,10 +15,12 @@ import { memoryCommand } from './commands/memory.js';
 import { agentCommand } from './commands/agent.js';
 import { gitCommand } from './commands/git.js';
 import { configManager } from './config/manager.js';
-import { printHeader, printSuccess, printError, printInfo } from './ui/logo.js';
+import { printHeader, printSuccess, printError, printInfo, printWarning } from './ui/logo.js';
 import { showMainMenu } from './ui/menu.js';
 import { handleMenuChoice } from './ui/menu-handler.js';
 import { logger } from './services/logger.js';
+import { generateStartupSuggestions, formatHealthCheckForCLI } from './agent/startup-suggestions.js';
+import { autonomousGoalManager } from './agent/autonomous-goals.js';
 
 // 注册 DI 容器服务（可选，用于未来的依赖注入迁移）
 import { registerCoreServices } from './di/index.js';
@@ -73,6 +75,26 @@ if (process.argv.length === 2) {
     try {
       await configManager.init();
       logger.debug('Configuration initialized successfully');
+
+      // 运行启动健康检查（非阻塞，仅提示）
+      try {
+        const healthResult = await generateStartupSuggestions(process.cwd());
+        if (healthResult.healthStatus !== 'healthy') {
+          console.log();
+          if (healthResult.healthStatus === 'critical') {
+            printWarning(`项目健康检查: ${healthResult.summary}`);
+          } else {
+            printInfo(`项目健康检查: ${healthResult.summary}`);
+          }
+          // 显示前 3 条建议
+          for (const suggestion of healthResult.suggestions.slice(0, 3)) {
+            console.log(`    ${suggestion}`);
+          }
+          console.log();
+        }
+      } catch {
+        // 健康检查失败不影响主流程
+      }
     } catch (error: any) {
       logger.error({ error: error.message }, 'Configuration initialization failed');
       printError(`配置初始化失败: ${error.message}`);

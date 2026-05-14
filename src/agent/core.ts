@@ -9,6 +9,9 @@ import { ContextBuilder, contextBuilder, type KnowledgeEntry } from './context-b
 import { ChangeControlManager } from './change-control.js';
 import { DirtyProtect, AutoCommitEngine, CheckpointManager } from '../git/index.js';
 import { agentLogger } from '../services/logger.js';
+import { ExperienceStore, type Experience } from './experience-store.js';
+import { PersonalityManager } from './personality.js';
+import { EmotionalStateManager } from './emotional-state.js';
 import chalk from 'chalk';
 import type { TaskStep, Task } from './types.js';
 import type { CodeIndex } from '../analysis/indexer/types.js';
@@ -47,6 +50,10 @@ export class AgentExecutor {
   private builtContext: string = '';
   private decisionReflector: DecisionReflector;
   private currentDecisionId?: string;
+  private experienceStore: ExperienceStore;
+  private personalityManager: PersonalityManager;
+  private emotionalState: EmotionalStateManager;
+  private behaviorGuidelines: string = '';
 
   constructor(
     userInput: string,
@@ -76,6 +83,9 @@ export class AgentExecutor {
     this.changeControl = new ChangeControlManager();
     this.knowledgeGraph = new KnowledgeGraph();
     this.decisionReflector = new DecisionReflector();
+    this.experienceStore = new ExperienceStore();
+    this.personalityManager = new PersonalityManager();
+    this.emotionalState = new EmotionalStateManager();
     this.rootDir = options?.rootDir || process.cwd();
 
     // ChangeControl 默认启用
@@ -86,6 +96,38 @@ export class AgentExecutor {
 
   async run(): Promise<Task> {
     agentLogger.info({ taskId: this.task.id, input: this.task.userInput }, 'Starting agent task');
+
+    // 加载人格配置
+    try {
+      await this.personalityManager.load();
+      this.personalityManager.incrementInteractions();
+    } catch {
+      // 人格加载失败不影响主流程
+    }
+
+    // 情绪衰减（每次任务开始时衰减上次的情绪）
+    this.emotionalState.decay();
+
+    // 加载持久化的决策历史
+    await this.decisionReflector.load();
+
+    // 加载历史经验，生成行为指导（学习循环入口）
+    try {
+      await this.experienceStore.load();
+      this.behaviorGuidelines = await this.experienceStore.generateBehaviorGuidelines();
+      if (this.behaviorGuidelines) {
+        agentLogger.info(
+          { taskId: this.task.id, experienceCount: this.experienceStore.getExperienceCount() },
+          'Loaded experience-based behavior guidelines'
+        );
+      }
+    } catch (error) {
+      agentLogger.debug(
+        { taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+        'Experience loading failed (non-critical)'
+      );
+    }
+
     try {
       // === 阶段 0: Git 检查点 ===
       try {
@@ -364,6 +406,84 @@ export class AgentExecutor {
           { taskId: this.task.id, overallRating: taskReflection.overallRating },
           'Task reflection completed'
         );
+
+        // === 学习循环：将反思结果转化为经验并存储 ===
+        try {
+          // 1. 调用 generateImprovementReport 获取改进报告（触发报告生成逻辑）
+          await this.decisionReflector.generateImprovementReport();
+
+          // 2. 调用 learnFromExperience 提取教训
+          const lessons = await this.decisionReflector.learnFromExperience(this.task.id);
+
+          // 3. 提取决策记录，构建 Experience 对象
+          const taskDecisions = await this.decisionReflector.getDecisionsByTask(this.task.id);
+          const experienceDecisions = taskDecisions.map(d => ({
+            context: d.description,
+            chosen: d.chosenAlternative,
+            outcome: (d.outcome?.success ? 'success' : (!d.outcome ? 'partial' : 'failure')) as 'success' | 'failure' | 'partial',
+            confidence: d.confidence,
+            reasoning: d.rationale,
+          }));
+
+          // 4. 提取改进建议和模式
+          const improvements = taskReflection.improvements.map(i => i.recommendation);
+          const patterns: string[] = [];
+          if (taskReflection.failures.length > 0) {
+            patterns.push(...taskReflection.failures.map(f => f.replace(/^失败:\s*/, '')));
+          }
+          if (taskReflection.successes.length > 0) {
+            patterns.push(...taskReflection.successes.map(s => s.replace(/^成功:\s*/, '')));
+          }
+
+          // 5. 根据任务结果推断情绪基调
+          const hasFailures = this.task.steps.some(s => s.status === 'error' || s.status === 'skipped');
+          const allSuccess = this.task.steps.every(s => s.status === 'done');
+          const errorCount = this.task.steps.filter(s => s.status === 'error').length;
+          let emotionalTone: Experience['emotionalTone'] = 'neutral';
+          if (allSuccess && taskReflection.overallRating >= 0.8) {
+            emotionalTone = 'excited';
+          } else if (allSuccess) {
+            emotionalTone = 'confident';
+          } else if (errorCount > 0) {
+            emotionalTone = 'frustrated';
+          } else if (hasFailures) {
+            emotionalTone = 'cautious';
+          }
+
+          // 6. 推断任务类型
+          const taskType = this.inferTaskType(this.task.userInput, this.task.intent);
+
+          // 7. 构建并存储经验
+          const experience: Experience = {
+            id: `exp-${this.task.id}`,
+            timestamp: new Date().toISOString(),
+            taskType,
+            taskDescription: this.task.userInput,
+            decisions: experienceDecisions,
+            lessons,
+            improvements,
+            patterns,
+            emotionalTone,
+          };
+
+          await this.experienceStore.addExperience(experience);
+
+          agentLogger.info(
+            {
+              taskId: this.task.id,
+              experienceId: experience.id,
+              lessonCount: lessons.length,
+              improvementCount: improvements.length,
+              emotionalTone,
+            },
+            'Experience stored for future learning'
+          );
+        } catch (error) {
+          agentLogger.warn(
+            { taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+            'Experience storage failed (non-critical)'
+          );
+        }
       } catch (error) {
         agentLogger.warn(
           { taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
@@ -378,6 +498,9 @@ export class AgentExecutor {
       this.task.status = 'completed';
       this.task.completedAt = Date.now();
       agentLogger.info({ taskId: this.task.id, duration: this.task.completedAt - this.task.startedAt }, 'Task completed');
+
+      // 更新情绪状态：任务成功
+      this.emotionalState.onTaskSuccess(this.task.userInput);
 
       // 保存到记忆
       await this.saveToMemory(summary);
@@ -397,11 +520,24 @@ export class AgentExecutor {
         }
       }
 
+      // 保存决策历史到磁盘
+      await this.decisionReflector.save();
+
+      // 保存人格状态
+      await this.personalityManager.save();
+
       return this.task;
     } catch (error) {
       this.task.status = 'failed';
       this.task.result = error instanceof Error ? error.message : String(error);
       agentLogger.error({ taskId: this.task.id, error: this.task.result }, 'Task failed');
+
+      // 更新情绪状态：任务失败
+      this.emotionalState.onTaskFailure(this.task.result);
+
+      // 即使失败也保存已记录的决策
+      await this.decisionReflector.save();
+
       return this.task;
     }
   }
@@ -412,16 +548,59 @@ export class AgentExecutor {
   }
 
   /**
-   * 获取包含项目上下文的 previousResults。
+   * 根据用户输入和意图推断任务类型
+   */
+  private inferTaskType(userInput: string, intent?: string): string {
+    const input = userInput.toLowerCase();
+
+    if (/bug|fix|修复|错误|报错|异常|error|fail|crash/.test(input)) return 'bug-fix';
+    if (/refactor|重构|优化|整理|clean|improve/.test(input)) return 'refactor';
+    if (/feature|功能|新增|添加|实现|create|add|implement/.test(input)) return 'feature';
+    if (/test|测试|单元|e2e|spec/.test(input)) return 'testing';
+    if (/review|审查|检查|check/.test(input)) return 'review';
+    if (/doc|文档|readme|comment/.test(input)) return 'documentation';
+    if (/deploy|部署|发布|release|build/.test(input)) return 'deployment';
+
+    // 回退到意图
+    if (intent) {
+      return intent.replace(/-/g, '_');
+    }
+
+    return 'general';
+  }
+
+  /**
+   * 获取包含项目上下文和行为指导的 previousResults。
    * 将 ContextBuilder 生成的上下文（Repo Map、Knowledge Graph、Memory）
-   * 直接注入到 previousResults 的开头，避免被 addToolResult 截断。
+   * 以及从历史经验中学习到的行为指导直接注入到 previousResults 的开头，
+   * 避免被 addToolResult 截断。
    */
   private getContextWithBuiltContext(): string[] {
     const previousContext = this.contextManager.getContext().map(m => m.content);
-    if (this.builtContext) {
-      return [`[项目上下文]\n${this.builtContext}`, ...previousContext];
+    const parts: string[] = [];
+
+    // 注入人格描述
+    const personalityPrompt = this.personalityManager.getPersonalityPrompt();
+    if (personalityPrompt) {
+      parts.push(`[Agent 人格]\n${personalityPrompt}`);
     }
-    return previousContext;
+
+    // 注入情绪状态
+    const emotionalContext = this.emotionalState.getEmotionalContext();
+    if (emotionalContext) {
+      parts.push(emotionalContext);
+    }
+
+    // 注入从历史经验中学习到的行为指导（学习循环的核心）
+    if (this.behaviorGuidelines) {
+      parts.push(`[行为指导（基于${this.experienceStore.getExperienceCount()}次历史经验自动生成）]\n${this.behaviorGuidelines}`);
+    }
+
+    if (this.builtContext) {
+      parts.push(`[项目上下文]\n${this.builtContext}`);
+    }
+
+    return [...parts, ...previousContext];
   }
 
   private async askContinue(): Promise<boolean> {
