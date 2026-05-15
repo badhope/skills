@@ -105,13 +105,43 @@ export {
   askUserConfirmation,
   TrustLevel as TrustLevelValue,
   type TrustIssue as TrustIssueType,
+  // 新增导出
+  TrustDetector,
+  type DetectionContext,
+  calculateTrustScore,
+  getScoreGrade,
+  shouldRequireConfirmation,
+  formatTrustOutput,
+  askHighRiskConfirmation,
+  performTrustCheck,
+  batchTrustCheck,
+  type TrustReport as TrustReportType,
+  type ConfirmationOptions,
 } from './trust.js';
 
 // Import generateTrustReport for type inference
 import { generateTrustReport } from './trust.js';
 
 // TrustReport type is the return type of generateTrustReport
-export type TrustReportType = ReturnType<typeof generateTrustReport>;
+export type TrustReportReturnType = ReturnType<typeof generateTrustReport>;
+
+// ==================== Output Validator (with Zod) ====================
+export {
+  OutputValidator,
+  JsonSchema,
+  CodeBlockSchema,
+  MarkdownHeadingSchema,
+  ToolCallSchema,
+  MultipleToolCallsSchema,
+  DEFAULT_SCHEMAS,
+  DEFAULT_ZOD_SCHEMAS,
+  createObjectSchema,
+  createArraySchema,
+  createStringSchema,
+} from './output-validator.js';
+
+// Import zod for external use
+export { z } from 'zod';
 
 // ==================== Context Management ====================
 export { ContextManager } from './context-manager.js';
@@ -138,4 +168,4 @@ export {
 export { AgentService } from '../services/agent-service.js';
 
 // ==================== Version ====================
-export const AGENT_MODULE_VERSION = '2.0.0';
+export const AGENT_MODULE_VERSION = '2.1.0';

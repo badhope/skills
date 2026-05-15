@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { MEMORY_DIR } from '../utils/index.js';
 import { AsyncLock } from '../utils/async-lock.js';
+import { GraphWrapper } from './graph-wrapper.js';
 import type {
   NodeType,
   EdgeType,
@@ -18,9 +19,6 @@ import { generateId, tokenize, computeRelevance, isExpired } from './graph-utils
 export type {
   NodeType,
   EdgeType,
-};
-
-export type {
   MemoryNode,
   MemoryEdge,
   GraphData,
@@ -43,11 +41,26 @@ const DECAY_FACTOR = 0.95;
 const IMPORTANCE_THRESHOLD = 0.05;
 
 // ============================================================
+// 内部类型
+// ============================================================
+
+/** 节点属性 */
+interface NodeAttrs {
+  node: MemoryNode;
+}
+
+/** 边属性 */
+interface EdgeAttrs {
+  edge: MemoryEdge;
+}
+
+// ============================================================
 // MemoryGraph 类
 // ============================================================
 
 /**
  * 基于图结构的记忆管理模块
+ * 使用 graphlib 提供高效的图算法支持。
  *
  * 节点类型：
  *   - fact: 事实（可验证的信息）
@@ -63,12 +76,17 @@ const IMPORTANCE_THRESHOLD = 0.05;
  * 持久化位置：~/.devflow/memory/graph.json
  */
 export class MemoryGraph {
-  private nodes: Record<string, MemoryNode> = {};
-  private edges: MemoryEdge[] = [];
+  private graph: GraphWrapper;
+  private nodes: Record<string, MemoryNode> = {};  // 用于快速查找
   private initialized = false;
   private initLock = new AsyncLock();
   private saveLock = new AsyncLock();
   private stateLock = new AsyncLock();
+
+  constructor() {
+    // 使用无向图，因为记忆关系通常是双向的
+    this.graph = new GraphWrapper(false);
+  }
 
   // ----------------------------------------------------------
   // 初始化与持久化
@@ -93,12 +111,27 @@ export class MemoryGraph {
     try {
       const data = await fs.readFile(GRAPH_FILE, 'utf-8');
       const parsed: GraphData = JSON.parse(data);
-      this.nodes = parsed.nodes || {};
-      this.edges = parsed.edges || [];
+      this.loadFromData(parsed);
     } catch {
-      // 文件不存在或解析失败，使用空图谱
       this.nodes = {};
-      this.edges = [];
+    }
+  }
+
+  /** 从数据加载到图中 */
+  private loadFromData(data: GraphData): void {
+    this.nodes = data.nodes || {};
+    this.graph.clear();
+
+    // 添加所有节点
+    for (const [id, node] of Object.entries(this.nodes)) {
+      this.graph.addNode(id, { node });
+    }
+
+    // 添加所有边
+    for (const edge of data.edges || []) {
+      if (this.graph.hasNode(edge.from) && this.graph.hasNode(edge.to)) {
+        this.graph.addEdge(edge.from, edge.to, { edge });
+      }
     }
   }
 
@@ -110,11 +143,23 @@ export class MemoryGraph {
       await this.init();
       const data: GraphData = {
         nodes: this.nodes,
-        edges: this.edges,
+        edges: this.getAllEdgesFromGraph(),
         version: GRAPH_VERSION,
       };
       await fs.writeFile(GRAPH_FILE, JSON.stringify(data, null, 2), 'utf-8');
     });
+  }
+
+  /** 从图中获取所有边 */
+  private getAllEdgesFromGraph(): MemoryEdge[] {
+    const edges: MemoryEdge[] = [];
+    for (const edge of this.graph.edges()) {
+      const attrs = this.graph.getEdgeAttrs<EdgeAttrs>(edge.v, edge.w);
+      if (attrs?.edge) {
+        edges.push(attrs.edge);
+      }
+    }
+    return edges;
   }
 
   // ----------------------------------------------------------
@@ -123,12 +168,6 @@ export class MemoryGraph {
 
   /**
    * 添加记忆节点
-   * @param type - 节点类型 (fact / experience / preference / relation)
-   * @param content - 节点内容
-   * @param tags - 可选标签列表
-   * @param importance - 可选重要性 (0-1)，默认 0.5
-   * @param expiresAt - 可选过期时间 (ISO 字符串)
-   * @returns 新创建的节点
    */
   async addNode(
     type: NodeType,
@@ -153,6 +192,7 @@ export class MemoryGraph {
       };
 
       this.nodes[node.id] = node;
+      this.graph.addNode(node.id, { node });
       await this.save();
       return node;
     });
@@ -166,8 +206,6 @@ export class MemoryGraph {
       await this.init();
       const node = this.nodes[id];
       if (!node) return null;
-
-      // 更新访问时间（不自动保存，由调用者决定何时保存）
       node.accessedAt = new Date().toISOString();
       return node;
     });
@@ -182,8 +220,7 @@ export class MemoryGraph {
       if (!this.nodes[id]) return false;
 
       delete this.nodes[id];
-      // 移除所有与该节点相关的边
-      this.edges = this.edges.filter(e => e.from !== id && e.to !== id);
+      this.graph.removeNode(id);
       await this.save();
       return true;
     });
@@ -195,11 +232,6 @@ export class MemoryGraph {
 
   /**
    * 创建两个节点之间的关系边
-   * @param fromId - 起始节点 ID
-   * @param toId - 目标节点 ID
-   * @param type - 边类型，默认 related_to
-   * @param strength - 关系强度 (0-1)，默认 0.5
-   * @returns 新创建的边，如果节点不存在则返回 null
    */
   async linkNodes(
     fromId: string,
@@ -210,9 +242,7 @@ export class MemoryGraph {
     return this.stateLock.acquire(async () => {
       await this.init();
 
-      // 验证两个节点都存在
       if (!this.nodes[fromId] || !this.nodes[toId]) return null;
-      // 不允许自环
       if (fromId === toId) return null;
 
       const edge: MemoryEdge = {
@@ -222,7 +252,7 @@ export class MemoryGraph {
         strength: Math.max(0, Math.min(1, strength ?? 0.5)),
       };
 
-      this.edges.push(edge);
+      this.graph.addEdge(fromId, toId, { edge });
       await this.save();
       return edge;
     });
@@ -234,13 +264,11 @@ export class MemoryGraph {
   async unlinkNodes(fromId: string, toId: string): Promise<boolean> {
     return this.stateLock.acquire(async () => {
       await this.init();
-      const before = this.edges.length;
-      this.edges = this.edges.filter(e => !(e.from === fromId && e.to === toId));
-      if (this.edges.length < before) {
+      const removed = this.graph.removeEdge(fromId, toId);
+      if (removed) {
         await this.save();
-        return true;
       }
-      return false;
+      return removed;
     });
   }
 
@@ -250,9 +278,6 @@ export class MemoryGraph {
 
   /**
    * 关键词搜索节点内容
-   * @param query - 搜索关键词
-   * @param limit - 最大返回数量，默认 20
-   * @returns 按相关性排序的搜索结果
    */
   async search(query: string, limit = 20): Promise<SearchResult[]> {
     return this.stateLock.acquire(async () => {
@@ -264,20 +289,17 @@ export class MemoryGraph {
       const results: SearchResult[] = [];
 
       for (const node of Object.values(this.nodes)) {
-        // 跳过已过期节点
         if (isExpired(node)) continue;
 
-        // 在内容和标签中搜索
         const contentScore = computeRelevance(queryTokens, node.content);
         const tagScore = computeRelevance(queryTokens, node.tags.join(' '));
-        const totalScore = contentScore + tagScore * 0.5; // 标签匹配权重略低
+        const totalScore = contentScore + tagScore * 0.5;
 
         if (totalScore > 0) {
           results.push({ node, score: totalScore });
         }
       }
 
-      // 按得分降序排列
       results.sort((a, b) => b.score - a.score);
       return results.slice(0, limit);
     });
@@ -285,9 +307,6 @@ export class MemoryGraph {
 
   /**
    * 获取与指定节点关联的所有节点（支持多层遍历）
-   * @param id - 起始节点 ID
-   * @param depth - 遍历深度，默认 1（仅直接关联）
-   * @returns 关联节点列表
    */
   async getRelated(id: string, depth = 1): Promise<MemoryNode[]> {
     return this.stateLock.acquire(async () => {
@@ -295,32 +314,22 @@ export class MemoryGraph {
 
       if (!this.nodes[id]) return [];
 
-      const visited = new Set<string>();
+      const visited = new Set<string>([id]);
       const result: MemoryNode[] = [];
-
-      // BFS 遍历
       let frontier = [id];
-      visited.add(id);
 
       for (let d = 0; d < depth; d++) {
         const nextFrontier: string[] = [];
 
         for (const nodeId of frontier) {
-          // 找到所有与 nodeId 相连的边
-          const connectedIds: string[] = [];
-          for (const edge of this.edges) {
-            if (edge.from === nodeId && !visited.has(edge.to)) {
-              connectedIds.push(edge.to);
-            }
-            if (edge.to === nodeId && !visited.has(edge.from)) {
-              connectedIds.push(edge.from);
-            }
-          }
+          const neighbors = this.graph.neighbors(nodeId);
 
-          for (const cid of connectedIds) {
-            visited.add(cid);
-            nextFrontier.push(cid);
-            const node = this.nodes[cid];
+          for (const neighborId of neighbors) {
+            if (visited.has(neighborId)) continue;
+            visited.add(neighborId);
+            nextFrontier.push(neighborId);
+
+            const node = this.nodes[neighborId];
             if (node && !isExpired(node)) {
               result.push(node);
             }
@@ -336,17 +345,11 @@ export class MemoryGraph {
 
   /**
    * 基于上下文查询获取相关子图
-   * 先通过关键词搜索找到匹配节点，再扩展其关联节点，返回子图
-   * @param query - 查询文本
-   * @param expandDepth - 关联扩展深度，默认 1
-   * @param maxNodes - 最大节点数量，默认 30
-   * @returns 包含节点和边的上下文子图
    */
   async getContext(query: string, expandDepth = 1, maxNodes = 30): Promise<ContextResult> {
     return this.stateLock.acquire(async () => {
       await this.init();
 
-      // 第一步：关键词搜索获取种子节点
       const searchResults = await this.search(query, maxNodes);
 
       if (searchResults.length === 0) {
@@ -356,7 +359,6 @@ export class MemoryGraph {
       const seedNodeIds = new Set(searchResults.map(r => r.node.id));
       const allNodeIds = new Set<string>(seedNodeIds);
 
-      // 第二步：扩展关联节点
       for (const seedId of seedNodeIds) {
         const related = await this.getRelated(seedId, expandDepth);
         for (const node of related) {
@@ -366,21 +368,15 @@ export class MemoryGraph {
         if (allNodeIds.size >= maxNodes) break;
       }
 
-      // 第三步：收集子图中的边（两端都在 allNodeIds 中的边）
-      const subEdges = this.edges.filter(
+      const subEdges = this.getAllEdgesFromGraph().filter(
         e => allNodeIds.has(e.from) && allNodeIds.has(e.to),
       );
 
-      // 第四步：收集节点
       const subNodes = Array.from(allNodeIds)
         .map(id => this.nodes[id])
         .filter((n): n is MemoryNode => !!n && !isExpired(n));
 
-      return {
-        nodes: subNodes,
-        edges: subEdges,
-        query,
-      };
+      return { nodes: subNodes, edges: subEdges, query };
     });
   }
 
@@ -390,7 +386,6 @@ export class MemoryGraph {
 
   /**
    * 衰减所有节点的重要性，并清理已过期和低重要性的节点
-   * @returns 被清理的节点数量
    */
   async decayImportance(): Promise<number> {
     return this.stateLock.acquire(async () => {
@@ -400,25 +395,21 @@ export class MemoryGraph {
       const toRemove: string[] = [];
 
       for (const [id, node] of Object.entries(this.nodes)) {
-        // 检查是否过期
         if (isExpired(node)) {
           toRemove.push(id);
           continue;
         }
 
-        // 衰减重要性
         node.importance *= DECAY_FACTOR;
 
-        // 低于阈值则标记清理
         if (node.importance < IMPORTANCE_THRESHOLD) {
           toRemove.push(id);
         }
       }
 
-      // 执行清理
       for (const id of toRemove) {
         delete this.nodes[id];
-        this.edges = this.edges.filter(e => e.from !== id && e.to !== id);
+        this.graph.removeNode(id);
         removedCount++;
       }
 
@@ -461,7 +452,7 @@ export class MemoryGraph {
         }
       }
 
-      for (const edge of this.edges) {
+      for (const edge of this.getAllEdgesFromGraph()) {
         edgesByType[edge.type]++;
       }
 
@@ -469,7 +460,7 @@ export class MemoryGraph {
 
       return {
         totalNodes,
-        totalEdges: this.edges.length,
+        totalEdges: this.graph.edgeCount(),
         nodesByType,
         edgesByType,
         averageImportance: totalNodes > 0
@@ -491,7 +482,6 @@ export class MemoryGraph {
       if (type) {
         nodes = nodes.filter(n => n.type === type);
       }
-      // 过滤已过期节点
       return nodes.filter(n => !isExpired(n));
     });
   }
@@ -502,10 +492,11 @@ export class MemoryGraph {
   async getAllEdges(type?: EdgeType): Promise<MemoryEdge[]> {
     return this.stateLock.acquire(async () => {
       await this.init();
+      let edges = this.getAllEdgesFromGraph();
       if (type) {
-        return this.edges.filter(e => e.type === type);
+        edges = edges.filter(e => e.type === type);
       }
-      return [...this.edges];
+      return edges;
     });
   }
 
@@ -516,9 +507,37 @@ export class MemoryGraph {
     return this.stateLock.acquire(async () => {
       await this.init();
       this.nodes = {};
-      this.edges = [];
+      this.graph.clear();
       await this.save();
     });
+  }
+
+  // ----------------------------------------------------------
+  // 图算法扩展方法
+  // ----------------------------------------------------------
+
+  /**
+   * 检测图中是否有环
+   */
+  async hasCycles(): Promise<boolean> {
+    await this.init();
+    return this.graph.hasCycles();
+  }
+
+  /**
+   * 查找图中的所有环
+   */
+  async findCycles(): Promise<string[][]> {
+    await this.init();
+    return this.graph.findCycles();
+  }
+
+  /**
+   * 查找两节点间的最短路径
+   */
+  async shortestPath(fromId: string, toId: string): Promise<string[]> {
+    await this.init();
+    return this.graph.shortestPath(fromId, toId);
   }
 }
 

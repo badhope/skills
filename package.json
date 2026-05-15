@@ -48,6 +48,7 @@
     "diff": "^9.0.0",
     "eventemitter3": "^5.0.4",
     "glob": "^13.0.6",
+    "graphlib": "^2.1.8",
     "inquirer": "^9.2.15",
     "js-tiktoken": "^1.0.21",
     "lowdb": "^7.0.1",
@@ -68,12 +69,14 @@
     "tsyringe": "^4.8.0",
     "uuid": "^14.0.0",
     "wrap-ansi": "^10.0.0",
+    "xstate": "^5.31.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/async-lock": "^1.4.2",
     "@types/eslint": "^9.6.1",
     "@types/glob": "^8.1.0",
+    "@types/graphlib": "^2.1.12",
     "@types/inquirer": "^9.0.7",
     "@types/node": "^20.11.0",
     "@types/opossum": "^8.1.9",

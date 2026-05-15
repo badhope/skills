@@ -1,9 +1,53 @@
 /**
- * AI 输出验证模块
+ * AI 输出验证模块 (使用 Zod)
  *
- * 提供结构化的输出验证机制，确保 AI 生成的内容符合预期格式和质量标准。
+ * 提供结构化的输出验证机制，使用 Zod 进行运行时类型验证。
  * 支持代码、JSON、Markdown 和纯文本等多种输出类型的验证。
  */
+
+import { z } from 'zod';
+
+// ==================== Zod Schemas ====================
+
+/**
+ * JSON 输出验证模式
+ * 支持任意 JSON 结构
+ */
+export const JsonSchema = z.unknown().refine(
+  (val) => val !== undefined,
+  { message: 'JSON 解析结果不能为 undefined' }
+);
+
+/**
+ * 代码块验证模式
+ */
+export const CodeBlockSchema = z.object({
+  language: z.string().optional(),
+  content: z.string().min(1, '代码内容不能为空'),
+});
+
+/**
+ * Markdown 标题验证模式
+ */
+export const MarkdownHeadingSchema = z.object({
+  level: z.number().int().min(1).max(6),
+  text: z.string().min(1),
+});
+
+/**
+ * 工具调用验证模式
+ */
+export const ToolCallSchema = z.object({
+  name: z.string().min(1, '工具名称不能为空'),
+  arguments: z.record(z.unknown()).optional(),
+});
+
+/**
+ * 多工具调用验证模式
+ */
+export const MultipleToolCallsSchema = z.array(ToolCallSchema).min(1);
+
+// ==================== TypeScript Interfaces ====================
 
 /**
  * 验证结果接口
@@ -31,15 +75,49 @@ export interface OutputSchema {
   forbidden?: RegExp[];
   /** 最大长度限制 */
   maxLength?: number;
+  /** 最小长度限制 */
+  minLength?: number;
 }
+
+// ==================== Zod Schema Builder ====================
+
+/**
+ * 构建 JSON 对象验证模式
+ */
+function buildJsonObjectSchema<T extends z.ZodRawShape>(
+  shape: T
+): z.ZodObject<T> {
+  return z.object(shape);
+}
+
+/**
+ * 构建数组验证模式
+ */
+function buildArraySchema<T extends z.ZodTypeAny>(
+  elementSchema: T,
+  options?: { min?: number; max?: number }
+): z.ZodArray<T> {
+  let schema = z.array(elementSchema);
+  if (options?.min !== undefined) {
+    schema = schema.min(options.min);
+  }
+  if (options?.max !== undefined) {
+    schema = schema.max(options.max);
+  }
+  return schema;
+}
+
+// ==================== Output Validator Class ====================
 
 /**
  * 输出验证器类
  *
- * 管理多个验证模式，并根据模式验证 AI 输出内容。
+ * 使用 Zod 进行运行时类型验证，管理多个验证模式，
+ * 并根据模式验证 AI 输出内容。
  */
 export class OutputValidator {
   private schemas: Map<string, OutputSchema> = new Map();
+  private zodSchemas: Map<string, z.ZodType> = new Map();
 
   /**
    * 注册验证模式
@@ -51,6 +129,15 @@ export class OutputValidator {
   }
 
   /**
+   * 注册 Zod 验证模式
+   * @param intent - 意图标识符
+   * @param zodSchema - Zod 验证模式
+   */
+  registerZodSchema<T>(intent: string, zodSchema: z.ZodType<T>): void {
+    this.zodSchemas.set(intent, zodSchema);
+  }
+
+  /**
    * 验证输出内容
    * @param output - 要验证的输出内容
    * @param intent - 意图标识符，用于选择对应的验证模式
@@ -58,19 +145,131 @@ export class OutputValidator {
    */
   validate(output: string, intent: string): ValidationResult {
     const schema = this.schemas.get(intent);
-    if (!schema) {
+    const zodSchema = this.zodSchemas.get(intent);
+
+    // 如果没有注册任何模式，返回验证通过
+    if (!schema && !zodSchema) {
       return { valid: true, errors: [] };
     }
 
     const errors: string[] = [];
     const suggestions: string[] = [];
 
+    // 使用 OutputSchema 进行验证
+    if (schema) {
+      const schemaResult = this.validateWithSchema(output, schema);
+      errors.push(...schemaResult.errors);
+      suggestions.push(...(schemaResult.suggestions || []));
+    }
+
+    // 使用 Zod 模式进行验证
+    if (zodSchema) {
+      const zodResult = this.validateWithZod(output, zodSchema);
+      errors.push(...zodResult.errors);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
+    };
+  }
+
+  /**
+   * 使用 OutputSchema 验证
+   */
+  private validateWithSchema(
+    output: string,
+    schema: OutputSchema
+  ): ValidationResult {
+    const errors: string[] = [];
+    const suggestions: string[] = [];
+
     // 1. 长度检查
-    if (schema.maxLength && output.length > schema.maxLength) {
+    const lengthResult = this.validateLength(output, schema);
+    errors.push(...lengthResult.errors);
+
+    // 2. 必需内容检查
+    const requiredResult = this.validateRequired(output, schema);
+    errors.push(...requiredResult.errors);
+
+    // 3. 必需模式检查
+    const patternsResult = this.validatePatterns(output, schema);
+    errors.push(...patternsResult.errors);
+
+    // 4. 禁止模式检查
+    const forbiddenResult = this.validateForbidden(output, schema);
+    errors.push(...forbiddenResult.errors);
+
+    // 5. 类型特定验证
+    const typeResult = this.validateByType(output, schema);
+    errors.push(...typeResult.errors);
+    suggestions.push(...(typeResult.suggestions || []));
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
+    };
+  }
+
+  /**
+   * 使用 Zod 模式验证
+   */
+  private validateWithZod(output: string, zodSchema: z.ZodType): ValidationResult {
+    const errors: string[] = [];
+
+    // 尝试解析 JSON（如果输出是 JSON 字符串）
+    let data: unknown;
+    try {
+      data = JSON.parse(output);
+    } catch {
+      // 如果不是 JSON，直接使用字符串
+      data = output;
+    }
+
+    const result = zodSchema.safeParse(data);
+    if (!result.success) {
+      // 格式化 Zod 错误信息
+      const formattedErrors = result.error.issues.map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : 'root';
+        return `${path}: ${issue.message}`;
+      });
+      errors.push(...formattedErrors);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * 验证长度限制
+   */
+  private validateLength(
+    output: string,
+    schema: OutputSchema
+  ): { errors: string[] } {
+    const errors: string[] = [];
+
+    if (schema.minLength !== undefined && output.length < schema.minLength) {
+      errors.push(`输出过短（${output.length} < ${schema.minLength}）`);
+    }
+
+    if (schema.maxLength !== undefined && output.length > schema.maxLength) {
       errors.push(`输出过长（${output.length} > ${schema.maxLength}）`);
     }
 
-    // 2. 必需内容检查
+    return { errors };
+  }
+
+  /**
+   * 验证必需内容
+   */
+  private validateRequired(
+    output: string,
+    schema: OutputSchema
+  ): { errors: string[] } {
+    const errors: string[] = [];
+
     if (schema.required) {
       for (const req of schema.required) {
         if (!output.includes(req)) {
@@ -79,36 +278,164 @@ export class OutputValidator {
       }
     }
 
-    // 3. 必需模式检查
+    return { errors };
+  }
+
+  /**
+   * 验证必需模式
+   */
+  private validatePatterns(
+    output: string,
+    schema: OutputSchema
+  ): { errors: string[] } {
+    const errors: string[] = [];
+
     if (schema.patterns) {
       for (const pattern of schema.patterns) {
-        if (!pattern.test(output)) {
+        // 重置正则 lastIndex
+        const regex = new RegExp(pattern.source, pattern.flags);
+        if (!regex.test(output)) {
           errors.push(`不符合必需格式: ${pattern.source}`);
         }
       }
     }
 
-    // 4. 禁止模式检查
+    return { errors };
+  }
+
+  /**
+   * 验证禁止模式
+   */
+  private validateForbidden(
+    output: string,
+    schema: OutputSchema
+  ): { errors: string[] } {
+    const errors: string[] = [];
+
     if (schema.forbidden) {
       for (const pattern of schema.forbidden) {
-        if (pattern.test(output)) {
+        const regex = new RegExp(pattern.source, pattern.flags);
+        if (regex.test(output)) {
           errors.push(`包含禁止内容: ${pattern.source}`);
         }
       }
     }
 
-    // 5. 类型特定验证
+    return { errors };
+  }
+
+  /**
+   * 按类型验证
+   */
+  private validateByType(
+    output: string,
+    schema: OutputSchema
+  ): { errors: string[]; suggestions?: string[] } {
     switch (schema.type) {
-      case 'code': {
-        const codeValidation = this.validateCode(output);
-        errors.push(...codeValidation.errors);
-        suggestions.push(...codeValidation.suggestions);
-        break;
+      case 'code':
+        return this.validateCode(output);
+      case 'json':
+        return this.validateJson(output);
+      case 'markdown':
+        return this.validateMarkdown(output);
+      default:
+        return { errors: [] };
+    }
+  }
+
+  /**
+   * 验证 JSON 内容
+   * @param json - JSON 字符串
+   * @returns 验证结果
+   */
+  validateJson(json: string): ValidationResult {
+    const errors: string[] = [];
+
+    try {
+      const parsed = JSON.parse(json);
+      // 使用 Zod 进行额外的结构验证
+      const result = JsonSchema.safeParse(parsed);
+      if (!result.success) {
+        errors.push(...result.error.issues.map((e) => e.message));
       }
-      case 'json': {
-        const jsonValidation = this.validateJSON(output);
-        errors.push(...jsonValidation.errors);
-        break;
+    } catch (e) {
+      errors.push(`JSON 解析错误: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * 验证代码内容
+   * @param code - 代码字符串
+   * @returns 验证结果
+   */
+  validateCode(code: string): ValidationResult {
+    const errors: string[] = [];
+    const suggestions: string[] = [];
+
+    // 使用 Zod 验证代码块结构（如果看起来像代码块）
+    if (code.startsWith('```')) {
+      const codeBlockResult = this.parseCodeBlock(code);
+      if (codeBlockResult) {
+        const result = CodeBlockSchema.safeParse(codeBlockResult);
+        if (!result.success) {
+          errors.push(...result.error.issues.map((e) => e.message));
+        }
+      }
+    }
+
+    // 检查括号匹配
+    const bracketErrors = this.validateBrackets(code);
+    errors.push(...bracketErrors);
+
+    // 检查语法错误模式
+    const syntaxErrors = this.validateSyntaxPatterns(code);
+    errors.push(...syntaxErrors);
+
+    // 生成建议
+    const codeSuggestions = this.generateCodeSuggestions(code);
+    suggestions.push(...codeSuggestions);
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
+    };
+  }
+
+  /**
+   * 验证 Markdown 内容
+   * @param markdown - Markdown 字符串
+   * @returns 验证结果
+   */
+  validateMarkdown(markdown: string): ValidationResult {
+    const errors: string[] = [];
+    const suggestions: string[] = [];
+
+    // 检查标题格式
+    const headingPattern = /^(#{1,6})\s+(.+)$/gm;
+    let match;
+    while ((match = headingPattern.exec(markdown)) !== null) {
+      const level = match[1].length;
+      const text = match[2].trim();
+      const result = MarkdownHeadingSchema.safeParse({ level, text });
+      if (!result.success) {
+        errors.push(`无效标题: "${match[0]}"`);
+      }
+    }
+
+    // 检查代码块闭合
+    const codeBlockCount = (markdown.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+      errors.push('Markdown 代码块未正确闭合');
+    }
+
+    // 检查链接格式
+    const linkPattern = /\[([^\]]*)\]\(([^)]*)\)/g;
+    while ((match = linkPattern.exec(markdown)) !== null) {
+      if (!match[1] || !match[2]) {
+        errors.push(`无效链接格式: "${match[0]}"`);
       }
     }
 
@@ -120,41 +447,80 @@ export class OutputValidator {
   }
 
   /**
-   * 验证代码内容
-   * @param code - 代码字符串
-   * @returns 错误和建议列表
+   * 解析代码块
    */
-  private validateCode(code: string): { errors: string[]; suggestions: string[] } {
-    const errors: string[] = [];
-    const suggestions: string[] = [];
+  private parseCodeBlock(code: string): { language?: string; content: string } | null {
+    const match = code.match(/^```(\w*)\n([\s\S]*?)\n?```$/);
+    if (match) {
+      return {
+        language: match[1] || undefined,
+        content: match[2],
+      };
+    }
+    return null;
+  }
 
-    // 检查未闭合的花括号
+  /**
+   * 验证括号匹配
+   */
+  private validateBrackets(code: string): string[] {
+    const errors: string[] = [];
+
+    // 花括号
     const openBraces = (code.match(/\{/g) || []).length;
     const closeBraces = (code.match(/\}/g) || []).length;
     if (openBraces !== closeBraces) {
       errors.push(`花括号不匹配（开:${openBraces} 闭:${closeBraces}）`);
     }
 
-    // 检查未闭合的圆括号
+    // 圆括号
     const openParens = (code.match(/\(/g) || []).length;
     const closeParens = (code.match(/\)/g) || []).length;
     if (openParens !== closeParens) {
       errors.push(`圆括号不匹配（开:${openParens} 闭:${closeParens}）`);
     }
 
-    // 检查未闭合的方括号
+    // 方括号
     const openBrackets = (code.match(/\[/g) || []).length;
     const closeBrackets = (code.match(/\]/g) || []).length;
     if (openBrackets !== closeBrackets) {
       errors.push(`方括号不匹配（开:${openBrackets} 闭:${closeBrackets}）`);
     }
 
-    // 检查明显的语法错误模式
+    return errors;
+  }
+
+  /**
+   * 验证语法错误模式
+   */
+  private validateSyntaxPatterns(code: string): string[] {
+    const errors: string[] = [];
+
+    // 函数名以数字开头
     if (/function\s+\d/.test(code)) {
       errors.push('函数名不能以数字开头');
     }
 
-    // 建议
+    // 变量名以数字开头
+    if (/(?:let|const|var)\s+\d/.test(code)) {
+      errors.push('变量名不能以数字开头');
+    }
+
+    // 未闭合的模板字符串
+    const backtickCount = (code.match(/`/g) || []).length;
+    if (backtickCount % 2 !== 0) {
+      errors.push('模板字符串未正确闭合');
+    }
+
+    return errors;
+  }
+
+  /**
+   * 生成代码改进建议
+   */
+  private generateCodeSuggestions(code: string): string[] {
+    const suggestions: string[] = [];
+
     if (code.includes('console.log') && !code.includes('// TODO')) {
       suggestions.push('建议移除调试用的 console.log');
     }
@@ -163,24 +529,59 @@ export class OutputValidator {
       suggestions.push('建议移除 debugger 语句');
     }
 
-    return { errors, suggestions };
-  }
-
-  /**
-   * 验证 JSON 内容
-   * @param json - JSON 字符串
-   * @returns 错误列表
-   */
-  private validateJSON(json: string): { errors: string[] } {
-    const errors: string[] = [];
-    try {
-      JSON.parse(json);
-    } catch (e) {
-      errors.push(`JSON 解析错误: ${e instanceof Error ? e.message : String(e)}`);
+    if (code.includes('var ') && !code.includes('// legacy')) {
+      suggestions.push('建议使用 let/const 替代 var');
     }
-    return { errors };
+
+    if (/==[^=]/.test(code) && !/===/.test(code)) {
+      suggestions.push('建议使用严格相等运算符 ===');
+    }
+
+    return suggestions;
   }
 }
+
+// ==================== Helper Functions ====================
+
+/**
+ * 创建对象验证模式
+ */
+export function createObjectSchema<T extends z.ZodRawShape>(shape: T): z.ZodObject<T> {
+  return buildJsonObjectSchema(shape);
+}
+
+/**
+ * 创建数组验证模式
+ */
+export function createArraySchema<T extends z.ZodTypeAny>(
+  elementSchema: T,
+  options?: { min?: number; max?: number }
+): z.ZodArray<T> {
+  return buildArraySchema(elementSchema, options);
+}
+
+/**
+ * 创建字符串验证模式
+ */
+export function createStringSchema(options?: {
+  min?: number;
+  max?: number;
+  pattern?: RegExp;
+}): z.ZodString {
+  let schema = z.string();
+  if (options?.min !== undefined) {
+    schema = schema.min(options.min);
+  }
+  if (options?.max !== undefined) {
+    schema = schema.max(options.max);
+  }
+  if (options?.pattern !== undefined) {
+    schema = schema.regex(options.pattern);
+  }
+  return schema;
+}
+
+// ==================== Predefined Schemas ====================
 
 /**
  * 预定义的意图验证模式
@@ -219,4 +620,37 @@ export const DEFAULT_SCHEMAS: Record<string, OutputSchema> = {
     patterns: [/describe|it\(|test\(|expect/],
     maxLength: 8000,
   },
+};
+
+/**
+ * 预定义的 Zod 验证模式
+ */
+export const DEFAULT_ZOD_SCHEMAS: Record<string, z.ZodType> = {
+  // API 响应验证模式
+  'api-response': z.object({
+    success: z.boolean(),
+    data: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+
+  // 任务结果验证模式
+  'task-result': z.object({
+    taskId: z.string(),
+    status: z.enum(['pending', 'running', 'completed', 'failed']),
+    result: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
+
+  // 代码分析结果验证模式
+  'code-analysis': z.object({
+    issues: z.array(
+      z.object({
+        type: z.string(),
+        severity: z.enum(['error', 'warning', 'info']),
+        message: z.string(),
+        line: z.number().optional(),
+      })
+    ),
+    summary: z.string().optional(),
+  }),
 };
