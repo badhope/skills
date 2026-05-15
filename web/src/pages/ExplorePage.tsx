@@ -11,6 +11,7 @@ import {
   ArrowRight,
   BookOpen,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const features = [
   {
@@ -65,10 +66,12 @@ const quickStartSteps = [
 ];
 
 export default function ExplorePage() {
+  const navigate = useNavigate();
+
   return (
-    <div className="flex h-full flex-col gap-6 p-6 overflow-y-auto">
+    <div className="flex h-full flex-col gap-6 p-4 md:p-6 overflow-y-auto">
       {/* Hero */}
-      <div className="text-center py-8">
+      <div className="text-center py-6 md:py-8">
         <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 text-primary mx-auto mb-4">
           <Sparkles size={32} />
         </div>
@@ -78,10 +81,10 @@ export default function ExplorePage() {
         </p>
       </div>
 
-      {/* Feature cards */}
+      {/* Feature cards - responsive grid */}
       <div>
         <h3 className="text-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">Features</h3>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {features.map((feature) => (
             <Card key={feature.title} hoverable>
               <div className="flex items-start justify-between">
@@ -92,7 +95,12 @@ export default function ExplorePage() {
               </div>
               <h4 className="text-sm font-semibold text-text mt-3">{feature.title}</h4>
               <p className="text-xs text-text-muted mt-1 leading-relaxed">{feature.description}</p>
-              <Button variant="ghost" size="sm" className="mt-3 px-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-3 px-0"
+                onClick={() => navigate(feature.path)}
+              >
                 Explore <ArrowRight size={12} />
               </Button>
             </Card>
@@ -100,13 +108,13 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      {/* Quick start */}
+      {/* Quick start - responsive grid */}
       <Card>
         <h3 className="text-sm font-semibold text-text mb-4 flex items-center gap-2">
           <BookOpen size={14} className="text-primary" />
           Quick Start Guide
         </h3>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {quickStartSteps.map((step, i) => (
             <div key={i} className="flex items-start gap-3">
               <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-xs font-bold shrink-0">

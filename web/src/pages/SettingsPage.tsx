@@ -3,20 +3,46 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Tabs } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
+import { cn } from '@/lib/cn';
 import {
   Key,
   Cpu,
   Palette,
   Bell,
   Shield,
-  Globe,
   Save,
   RotateCcw,
 } from 'lucide-react';
 
+function Toggle({ defaultChecked = false, label, description }: { defaultChecked?: boolean; label: string; description: string }) {
+  return (
+    <label className="flex items-center justify-between cursor-pointer group">
+      <div>
+        <p className="text-sm text-text group-hover:text-text-primary transition-colors">{label}</p>
+        <p className="text-xs text-text-muted">{description}</p>
+      </div>
+      <div className="relative">
+        <input type="checkbox" defaultChecked={defaultChecked} className="sr-only peer" />
+        <span
+          className={cn(
+            'block w-10 h-6 rounded-full transition-colors',
+            'bg-bg-tertiary peer-checked:bg-primary',
+          )}
+        />
+        <span
+          className={cn(
+            'absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform',
+            'peer-checked:translate-x-4',
+          )}
+        />
+      </div>
+    </label>
+  );
+}
+
 export default function SettingsPage() {
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       <div>
         <h2 className="text-lg font-semibold text-text">Settings</h2>
         <p className="text-sm text-text-muted mt-0.5">Configure your DevFlow Agent preferences</p>
@@ -89,13 +115,16 @@ export default function SettingsPage() {
               <Input label="Default Workspace" placeholder="/path/to/workspace" />
               <Input label="Max Tokens" type="number" placeholder="4096" />
               <Input label="Temperature" type="number" placeholder="0.7" />
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-text">Auto Checkpoint</p>
-                  <p className="text-xs text-text-muted">Automatically save checkpoints before changes</p>
-                </div>
-                <input type="checkbox" defaultChecked className="accent-primary w-4 h-4" />
-              </div>
+              <Toggle
+                defaultChecked
+                label="Auto Checkpoint"
+                description="Automatically save checkpoints before changes"
+              />
+              <Toggle
+                defaultChecked={false}
+                label="Verbose Logging"
+                description="Enable detailed agent logging output"
+              />
             </div>
           </Card>
 

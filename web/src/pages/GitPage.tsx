@@ -10,6 +10,8 @@ import {
   Plus,
   RefreshCw,
   ArrowRight,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 
 const branches = [
@@ -27,9 +29,11 @@ const commits = [
   { hash: 'q3r4s5t', message: 'Initial project setup', author: 'User', time: '3d ago', branch: 'main' },
 ];
 
+const currentBranch = branches.find((b) => b.name === 'feature/auth-refactor') ?? branches[0];
+
 export default function GitPage() {
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       {/* Branch selector */}
       <Card>
         <div className="flex items-center justify-between mb-3">
@@ -48,13 +52,24 @@ export default function GitPage() {
               <GitBranch size={12} className="text-text-muted" />
               <span className="text-xs font-medium text-text">{branch.name}</span>
               {branch.isDefault && <Badge variant="info">default</Badge>}
-              {branch.ahead > 0 && (
-                <Badge variant="success">+{branch.ahead}</Badge>
-              )}
+              {branch.ahead > 0 && <Badge variant="success">+{branch.ahead}</Badge>}
             </div>
           ))}
         </div>
       </Card>
+
+      {/* Status summary bar */}
+      <div className="flex items-center gap-4 px-1">
+        <div className="flex items-center gap-1.5">
+          <ArrowUp size={14} className="text-success" />
+          <span className="text-sm text-text-secondary">{currentBranch.ahead} commits ahead</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <ArrowDown size={14} className="text-warning" />
+          <span className="text-sm text-text-secondary">{currentBranch.behind} commits behind</span>
+        </div>
+        <Badge variant="info">{currentBranch.name}</Badge>
+      </div>
 
       {/* Tabs */}
       <Tabs
@@ -65,7 +80,8 @@ export default function GitPage() {
         ]}
       />
 
-      <div className="flex-1 flex gap-4 min-h-0">
+      {/* Commit list + diff viewer - stack on mobile */}
+      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
         {/* Commit history */}
         <Card className="flex-1 overflow-y-auto">
           <div className="flex items-center justify-between mb-3">
@@ -81,35 +97,35 @@ export default function GitPage() {
                 <GitCommit size={14} className="text-text-muted mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-text font-medium">{commit.message}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
                     <span className="text-xs text-text-muted">{commit.hash}</span>
                     <span className="text-xs text-text-muted">by {commit.author}</span>
                     <span className="text-xs text-text-muted">{commit.time}</span>
                   </div>
                 </div>
-                <Badge>{commit.branch}</Badge>
+                <Badge className="hidden sm:inline-flex">{commit.branch}</Badge>
               </div>
             ))}
           </div>
         </Card>
 
         {/* Diff viewer */}
-        <Card className="w-96 shrink-0 overflow-y-auto">
+        <Card className="md:w-96 shrink-0 overflow-y-auto">
           <h3 className="text-sm font-semibold text-text mb-3">Diff Viewer</h3>
-          <div className="rounded-lg bg-bg p-4 font-mono text-xs leading-relaxed">
-            <div className="flex items-center gap-2 mb-2 text-text-muted">
+          <div className="rounded-lg bg-gray-950 border border-gray-800 p-4 font-mono text-xs leading-relaxed">
+            <div className="flex items-center gap-2 mb-3 text-gray-500">
               <span>src/auth/login.ts</span>
               <ArrowRight size={12} />
-              <span className="text-success">+42</span>
-              <span className="text-error">-18</span>
+              <span className="text-green-400">+42</span>
+              <span className="text-red-400">-18</span>
             </div>
-            <p className="text-text-muted">// Select a commit to view diff...</p>
-            <p className="mt-1 text-error">- const oldAuth = require('./old-auth');</p>
-            <p className="text-success">{'+ import { newAuth } from \'./new-auth\';'}</p>
+            <p className="text-gray-500">// Select a commit to view diff...</p>
+            <p className="mt-1 text-red-400">- const oldAuth = require('./old-auth');</p>
+            <p className="text-green-400">{'+ import { newAuth } from \'./new-auth\';'}</p>
             <p className="mt-1">  </p>
-            <p className="text-success">{'+ export async function login(credentials) {'}</p>
-            <p className="text-success">+   return newAuth.authenticate(credentials);</p>
-            <p className="text-success">{'+ }'}</p>
+            <p className="text-green-400">{'+ export async function login(credentials) {'}</p>
+            <p className="text-green-400">+   return newAuth.authenticate(credentials);</p>
+            <p className="text-green-400">{'+ }'}</p>
           </div>
         </Card>
       </div>

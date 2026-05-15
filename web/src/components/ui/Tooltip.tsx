@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, useCallback, useId, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
 interface TooltipProps {
@@ -15,28 +15,50 @@ const sideStyles = {
   right: 'left-full top-1/2 -translate-y-1/2 ml-2',
 };
 
+const SHOW_DELAY = 150;
+
 export function Tooltip({ content, children, side = 'top', className }: TooltipProps) {
   const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tooltipId = useId();
+
+  const handleMouseEnter = useCallback(() => {
+    timerRef.current = setTimeout(() => {
+      setVisible(true);
+    }, SHOW_DELAY);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setVisible(false);
+  }, []);
 
   return (
     <div
       className="relative inline-flex"
-      onMouseEnter={() => setVisible(true)}
-      onMouseLeave={() => setVisible(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      {children}
-      {visible && (
-        <div
-          className={cn(
-            'absolute z-50 whitespace-nowrap rounded-md bg-bg-tertiary px-2.5 py-1.5 text-xs text-text shadow-lg',
-            'pointer-events-none animate-in fade-in',
-            sideStyles[side],
-            className,
-          )}
-        >
-          {content}
-        </div>
-      )}
+      <div aria-describedby={visible ? tooltipId : undefined}>
+        {children}
+      </div>
+      <div
+        id={tooltipId}
+        role="tooltip"
+        className={cn(
+          'absolute z-50 whitespace-nowrap rounded-md bg-bg-tertiary px-2.5 py-1.5 text-xs text-text shadow-lg',
+          'pointer-events-none',
+          'transition-all duration-150',
+          visible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 scale-95 pointer-events-none',
+          sideStyles[side],
+          className,
+        )}
+      >
+        {content}
+      </div>
     </div>
   );
 }

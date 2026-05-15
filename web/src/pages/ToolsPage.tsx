@@ -2,6 +2,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
+import { Input } from '@/components/ui/Input';
 import {
   Terminal,
   FileSearch,
@@ -11,7 +12,9 @@ import {
   Shield,
   Power,
   Settings2,
+  Search,
 } from 'lucide-react';
+import { useState } from 'react';
 
 const tools = [
   { id: 1, name: 'Terminal', icon: <Terminal size={20} />, description: 'Execute shell commands', enabled: true, category: 'system' },
@@ -23,16 +26,34 @@ const tools = [
 ];
 
 export default function ToolsPage() {
+  const [filter, setFilter] = useState('');
+
+  const filteredTools = filter.trim()
+    ? tools.filter(
+        (t) =>
+          t.name.toLowerCase().includes(filter.toLowerCase()) ||
+          t.description.toLowerCase().includes(filter.toLowerCase()),
+      )
+    : tools;
+
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-text">Available Tools</h2>
           <p className="text-sm text-text-muted mt-0.5">Manage and configure agent tools</p>
         </div>
         <Button size="sm" icon={<Settings2 size={14} />}>Configure</Button>
       </div>
+
+      {/* Search / Filter */}
+      <Input
+        placeholder="Search tools..."
+        prefix={<Search size={14} />}
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
 
       {/* Tabs */}
       <Tabs
@@ -45,9 +66,9 @@ export default function ToolsPage() {
         ]}
       />
 
-      {/* Tool grid */}
-      <div className="grid grid-cols-3 gap-3 flex-1 overflow-y-auto">
-        {tools.map((tool) => (
+      {/* Tool grid - responsive */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 flex-1 overflow-y-auto content-start">
+        {filteredTools.map((tool) => (
           <Card key={tool.id} hoverable>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">

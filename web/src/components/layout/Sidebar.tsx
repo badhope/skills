@@ -37,7 +37,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex flex-col h-full border-r border-border bg-bg-secondary transition-all duration-300',
+        'hidden md:flex flex-col h-full border-r border-border bg-bg-secondary transition-all duration-300',
         sidebarOpen ? 'w-56' : 'w-14',
       )}
     >
@@ -52,13 +52,15 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           className="ml-auto p-1 rounded-md text-text-muted hover:text-text hover:bg-surface transition-colors"
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-expanded={sidebarOpen}
         >
           {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5" aria-label="Main navigation">
         {navItems.map(({ to, icon: Icon, label }) => {
           const link = (
             <NavLink
@@ -90,8 +92,11 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Separator */}
+      <div className="mx-3 border-t border-border" />
+
       {/* Bottom actions */}
-      <div className="border-t border-border p-2 space-y-0.5">
+      <div className="p-2 space-y-0.5">
         <button
           onClick={toggleTheme}
           className={cn(
@@ -99,26 +104,40 @@ export function Sidebar() {
             'hover:text-text hover:bg-surface transition-colors',
             !sidebarOpen && 'justify-center px-0',
           )}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           {sidebarOpen && <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
 
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-primary/10 text-primary'
-                : 'text-text-secondary hover:text-text hover:bg-surface',
-              !sidebarOpen && 'justify-center px-0',
-            )
+        {(() => {
+          const settingsLink = (
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-text-secondary hover:text-text hover:bg-surface',
+                  !sidebarOpen && 'justify-center px-0',
+                )
+              }
+            >
+              <Settings size={18} className="shrink-0" />
+              {sidebarOpen && <span>Settings</span>}
+            </NavLink>
+          );
+
+          if (!sidebarOpen) {
+            return (
+              <Tooltip content="Settings" side="right">
+                {settingsLink}
+              </Tooltip>
+            );
           }
-        >
-          <Settings size={18} className="shrink-0" />
-          {sidebarOpen && <span>Settings</span>}
-        </NavLink>
+          return settingsLink;
+        })()}
       </div>
     </aside>
   );

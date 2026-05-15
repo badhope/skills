@@ -2,7 +2,8 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Tabs } from '@/components/ui/Tabs';
-import { Brain, Database, Search, FileText, Link2 } from 'lucide-react';
+import { Brain, Database, Search, FileText, Link2, Inbox } from 'lucide-react';
+import { useState } from 'react';
 
 const stats = [
   { label: 'Total Memories', value: '1,284', icon: <Database size={16} /> },
@@ -20,10 +21,20 @@ const placeholderMemories = [
 ];
 
 export default function MemoryPage() {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredMemories = searchQuery.trim()
+    ? placeholderMemories.filter(
+        (m) =>
+          m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          m.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase())),
+      )
+    : placeholderMemories;
+
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+      {/* Stats - responsive grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {stats.map((stat) => (
           <Card key={stat.label} hoverable>
             <div className="flex items-center gap-3">
@@ -42,7 +53,9 @@ export default function MemoryPage() {
       {/* Search */}
       <Input
         placeholder="Search memories..."
-        icon={<Search size={14} />}
+        prefix={<Search size={14} />}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
       />
 
       {/* Tabs */}
@@ -55,24 +68,33 @@ export default function MemoryPage() {
         ]}
       />
 
-      <div className="flex-1 flex gap-4 min-h-0">
+      {/* Memory list + graph - stack on mobile */}
+      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
         {/* Memory list */}
-        <Card className="w-80 shrink-0 overflow-y-auto">
-          <div className="space-y-2">
-            {placeholderMemories.map((mem) => (
-              <div
-                key={mem.id}
-                className="rounded-lg px-3 py-2.5 bg-bg-secondary cursor-pointer hover:bg-bg-tertiary transition-colors"
-              >
-                <p className="text-sm font-medium text-text">{mem.title}</p>
-                <div className="mt-1.5 flex gap-1">
-                  {mem.tags.map((tag) => (
-                    <Badge key={tag}>{tag}</Badge>
-                  ))}
+        <Card className="md:w-80 shrink-0 overflow-y-auto">
+          {filteredMemories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Inbox size={32} className="text-text-muted" />
+              <p className="text-sm text-text-muted">No memories found</p>
+              <p className="text-xs text-text-muted">Try a different search term</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredMemories.map((mem) => (
+                <div
+                  key={mem.id}
+                  className="rounded-lg px-3 py-2.5 bg-bg-secondary cursor-pointer hover:bg-bg-tertiary transition-colors"
+                >
+                  <p className="text-sm font-medium text-text">{mem.title}</p>
+                  <div className="mt-1.5 flex gap-1">
+                    {mem.tags.map((tag) => (
+                      <Badge key={tag}>{tag}</Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* Knowledge graph visualization placeholder */}
