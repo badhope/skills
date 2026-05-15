@@ -15,17 +15,3 @@ export {
 // Re-export types from indexer submodule (in same directory)
 export type { CodeIndex, IndexEntry, SearchOptions, IndexData } from './types.js';
 export { INDEXABLE_KINDS } from './types.js';
-
-// Re-export scoring functions
-export {
-  computeScore,
-  scoreExactMatch,
-  scorePrefixMatch,
-  scoreContainsMatch,
-  scoreKindMatch,
-  scoreDocstringMatch,
-  scoreSignatureMatch,
-} from './scoring.js';
-
-// Re-export inverted index
-export { InvertedIndex } from './inverted-index.js';

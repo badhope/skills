@@ -37,4 +37,3 @@ export {
 } from './code-indexer.js';
 export type { CodeIndex, IndexEntry, SearchOptions } from './indexer/types.js';
 export { INDEXABLE_KINDS } from './indexer/types.js';
-export { InvertedIndex, computeScore } from './indexer/index.js';

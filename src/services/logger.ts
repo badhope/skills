@@ -1,5 +1,11 @@
 // ============================================================
-// 日志服务 - 简单的结构化日志记录器
+// 日志服务 - 基于 pino 的结构化日志记录器
+// ============================================================
+
+import pino from 'pino';
+
+// ============================================================
+// Public types (backward-compatible)
 // ============================================================
 
 export interface LogContext {
@@ -15,107 +21,115 @@ export interface Logger {
 }
 
 // ============================================================
-// 敏感信息过滤
+// Sensitive field redaction paths for pino
 // ============================================================
 
-/** 敏感字段列表 */
-const SENSITIVE_FIELDS = [
+const REDACT_PATHS = [
   'apiKey', 'api_key', 'API_KEY', 'secret', 'SECRET',
   'password', 'PASSWORD', 'token', 'TOKEN',
   'accessToken', 'access_token', 'refreshToken',
   'privateKey', 'private_key', 'credential',
-];
-
-/**
- * 判断是否为敏感值
- */
-function isSensitiveKey(key: string): boolean {
-  const lowerKey = key.toLowerCase();
-  return SENSITIVE_FIELDS.some(f => lowerKey.includes(f.toLowerCase()));
-}
-
-/**
- * 清理敏感值
- */
-function sanitizeValue(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-  if (typeof value === 'object') {
-    return sanitizeContext(value as Record<string, unknown>);
-  }
-  return value;
-}
-
-/**
- * 清理上下文中的敏感信息
- */
-function sanitizeContext(context: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) {
-    result[key] = isSensitiveKey(key) ? '[REDACTED]' : sanitizeValue(value);
-  }
-  return result;
-}
+].map((f) => `req.*.${f}`);
 
 // ============================================================
-// 日志实现
+// Internal pino-backed logger implementation
 // ============================================================
 
-class SimpleLogger implements Logger {
-  constructor(private context: LogContext = {}) {}
+/**
+ * Create the underlying pino instance.
+ *
+ * Uses pino-pretty when NODE_ENV !== 'production' and enables
+ * built-in redaction for known sensitive fields.
+ */
+function createPinoInstance(bindings: LogContext = {}): pino.Logger {
+  const isProduction = processDELETE.NODE_ENV === 'production';
 
-  private log(level: string, context: LogContext | string, message?: string): void {
-    const timestamp = new Date().toISOString();
-    let logContext: LogContext;
-    let logMessage: string;
+  return pino({
+    level: processDELETE.DEBUG ? 'debug' : 'info',
+    redact: {
+      paths: REDACT_PATHS,
+      censor: '[REDACTED]',
+    },
+    transport: isProduction
+      ? undefined
+      : {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:yyyy-mm-dd HH:MM:ss.l',
+            ignore: 'pid,hostname',
+          },
+        },
+    ...(Object.keys(bindings).length > 0 ? { base: undefined } : {}),
+  }, pino.destination(1));
+}
 
+/**
+ * Adapter that wraps a pino.Logger to satisfy the project's Logger interface.
+ *
+ * The existing API accepts `(context | string, message?)` while pino uses
+ * `(mergeObject, message)`.  This adapter normalises the call signature.
+ */
+class PinoLoggerAdapter implements Logger {
+  private pinoLogger: pino.Logger;
+
+  constructor(pinoLogger: pino.Logger) {
+    this.pinoLogger = pinoLogger;
+  }
+
+  private normalizeArgs(
+    context: LogContext | string,
+    message?: string,
+  ): [obj: Record<string, unknown>, msg: string] {
     if (typeof context === 'string') {
-      logMessage = context;
-      logContext = {};
-    } else {
-      logMessage = message || '';
-      logContext = context;
+      return [{}, context];
     }
-
-    // 清理敏感信息
-    const sanitizedContext = sanitizeContext({ ...this.context, ...logContext });
-    const fullContext = { ...sanitizedContext, level, timestamp };
-    const contextStr = Object.entries(fullContext)
-      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-      .join(' ');
-
-    // eslint-disable-next-line no-console
-    console.log(`[${level.toUpperCase()}] ${timestamp} ${contextStr} ${logMessage}`.trim());
+    return [context, message ?? ''];
   }
 
   debug(context: LogContext | string, message?: string): void {
-    if (processDELETE.DEBUG) {
-      this.log('debug', context, message);
-    }
+    const [obj, msg] = this.normalizeArgs(context, message);
+    this.pinoLogger.debug(obj, msg);
   }
 
   info(context: LogContext | string, message?: string): void {
-    this.log('info', context, message);
+    const [obj, msg] = this.normalizeArgs(context, message);
+    this.pinoLogger.info(obj, msg);
   }
 
   warn(context: LogContext | string, message?: string): void {
-    this.log('warn', context, message);
+    const [obj, msg] = this.normalizeArgs(context, message);
+    this.pinoLogger.warn(obj, msg);
   }
 
   error(context: LogContext | string, message?: string): void {
-    this.log('error', context, message);
+    const [obj, msg] = this.normalizeArgs(context, message);
+    this.pinoLogger.error(obj, msg);
   }
 
   child(context: LogContext): Logger {
-    return new SimpleLogger({ ...this.context, ...context });
+    return new PinoLoggerAdapter(this.pinoLogger.child(context));
   }
 }
 
-// 全局日志实例
-export const logger: Logger = new SimpleLogger();
+// ============================================================
+// Public API
+// ============================================================
 
-// 特定模块的日志实例（向后兼容）
+/** Default global logger instance */
+export const logger: Logger = new PinoLoggerAdapter(createPinoInstance());
+
+/**
+ * Create a named child logger.
+ *
+ * @param name - Logger name / module identifier
+ * @returns A new Logger instance bound to the given name
+ */
+export function createLogger(name: string): Logger {
+  return logger.child({ module: name });
+}
+
+// Backward-compatible named loggers
 export const agentLogger: Logger = logger.child({ module: 'agent' });
 export const gitLogger: Logger = logger.child({ module: 'git' });
 export const toolLogger: Logger = logger.child({ module: 'tools' });

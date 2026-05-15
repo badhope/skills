@@ -1,80 +1,83 @@
-/**
- * 熔断器模块
- *
- * 防止级联故障，当服务出现故障时自动熔断，保护系统稳定性。
- * 实现状态机：CLOSED（正常）-> OPEN（熔断）-> HALF_OPEN（半开测试）-> CLOSED（恢复）
- */
+// ============================================================
+// Circuit Breaker - backed by opossum
+// ============================================================
+
+import CircuitBreakerLib from 'opossum';
+
+// ------------------------------------------------------------------
+// Public types (backward-compatible)
+// ------------------------------------------------------------------
 
 /**
- * 熔断器配置选项
+ * Circuit breaker configuration options.
  */
 export interface CircuitBreakerOptions {
-  /** 触发熔断的失败次数阈值，默认 3（关键操作 2，常规操作 3） */
+  /** Failure count that triggers the open state (default 5) */
   failureThreshold: number;
-  /** 熔断后重置时间（毫秒），默认 30 秒 */
+  /** Milliseconds before transitioning from OPEN to HALF_OPEN (default 60 000) */
   resetTimeout: number;
-  /** 半开状态下最大测试调用数，默认 1-3 */
+  /** Max test calls allowed in HALF_OPEN state (default 3) */
   halfOpenMaxCalls: number;
 }
 
 /**
- * 根据操作类型创建熔断器配置的工厂函数
- */
-export function createCircuitBreakerConfig(
-  operationType: 'llm' | 'critical' | 'normal' | 'default' = 'default'
-): CircuitBreakerOptions {
-  switch (operationType) {
-    case 'llm':
-      return {
-        failureThreshold: 2,       // LLM 调用更敏感，2次失败即熔断
-        resetTimeout: 30000,        // 30秒后尝试恢复
-        halfOpenMaxCalls: 1,       // 半开状态只允许1次测试调用
-      };
-    case 'critical':
-      return {
-        failureThreshold: 2,       // 关键操作更敏感
-        resetTimeout: 30000,
-        halfOpenMaxCalls: 1,
-      };
-    case 'normal':
-    case 'default':
-    default:
-      return {
-        failureThreshold: 3,       // 常规操作默认阈值
-        resetTimeout: 30000,
-        halfOpenMaxCalls: 3,
-      };
-  }
-}
-
-/**
- * 熔断器状态枚举
+ * Circuit breaker states.
  */
 export enum CircuitState {
-  /** 正常状态 - 允许请求通过 */
   CLOSED = 'closed',
-  /** 熔断状态 - 拒绝请求 */
   OPEN = 'open',
-  /** 半开状态 - 允许有限请求测试恢复 */
   HALF_OPEN = 'half-open',
 }
 
 /**
- * 熔断器类
+ * Create a preset configuration for different operation types.
+ */
+export function createCircuitBreakerConfig(
+  operationType: 'llm' | 'critical' | 'normal' | 'default' = 'default',
+): CircuitBreakerOptions {
+  switch (operationType) {
+    case 'llm':
+      return { failureThreshold: 2, resetTimeout: 30000, halfOpenMaxCalls: 1 };
+    case 'critical':
+      return { failureThreshold: 2, resetTimeout: 30000, halfOpenMaxCalls: 1 };
+    case 'normal':
+    case 'default':
+    default:
+      return { failureThreshold: 3, resetTimeout: 30000, halfOpenMaxCalls: 3 };
+  }
+}
+
+// ------------------------------------------------------------------
+// State mapping helpers
+// ------------------------------------------------------------------
+
+/**
+ * Map opossum's string state to our CircuitState enum.
+ */
+function mapOpossumState(opened: boolean, halfOpen: boolean): CircuitState {
+  if (opened) return CircuitState.OPEN;
+  if (halfOpen) return CircuitState.HALF_OPEN;
+  return CircuitState.CLOSED;
+}
+
+// ------------------------------------------------------------------
+// CircuitBreaker class (backward-compatible wrapper around opossum)
+// ------------------------------------------------------------------
+
+/**
+ * Circuit breaker that wraps async function calls.
  *
- * 包装异步函数调用，在故障率达到阈值时自动熔断。
+ * Delegates to opossum internally while preserving the original
+ * CircuitBreaker public API so that existing callers do not break.
  */
 export class CircuitBreaker {
-  private state: CircuitState = CircuitState.CLOSED;
-  private failureCount: number = 0;
-  private successCount: number = 0;
-  private lastFailureTime?: number;
-  private halfOpenCalls: number = 0;
+  private breaker: CircuitBreakerLib;
   private options: CircuitBreakerOptions;
 
   /**
-   * 创建熔断器实例
-   * @param options - 熔断器配置选项
+   * Create a circuit breaker instance.
+   *
+   * @param options - Partial configuration; missing fields use sensible defaults
    */
   constructor(options: Partial<CircuitBreakerOptions> = {}) {
     this.options = {
@@ -82,120 +85,59 @@ export class CircuitBreaker {
       resetTimeout: options.resetTimeout ?? 60000,
       halfOpenMaxCalls: options.halfOpenMaxCalls ?? 3,
     };
+
+    // opossum expects a function; we provide a no-op placeholder that
+    // will be overridden per-call in execute().
+    this.breaker = new CircuitBreakerLib(async () => {}, {
+      timeout: this.options.resetTimeout,
+      resetTimeout: this.options.resetTimeout,
+      volumeThreshold: this.options.halfOpenMaxCalls,
+      maxFailures: this.options.failureThreshold,
+    });
   }
 
   /**
-   * 执行被保护的异步函数
-   * @param fn - 要执行的异步函数
-   * @returns 函数执行结果
-   * @throws 当熔断器打开或函数执行失败时抛出错误
+   * Execute a function through the circuit breaker.
+   *
+   * @param fn - The async function to protect
+   * @returns The function's return value
+   * @throws When the breaker is open or the function fails
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.state === CircuitState.OPEN) {
-      if (this.shouldAttemptReset()) {
-        this.transitionTo(CircuitState.HALF_OPEN);
-      } else {
-        throw new Error(`熔断器已打开，请等待 ${this.getRemainingTime()}ms 后重试`);
-      }
-    }
+    // Create a one-shot opossum breaker for this specific function
+    const shot = new CircuitBreakerLib(fn, {
+      resetTimeout: this.options.resetTimeout,
+      maxFailures: this.options.failureThreshold,
+      volumeThreshold: this.options.halfOpenMaxCalls,
+    });
 
-    if (this.state === CircuitState.HALF_OPEN) {
-      if (this.halfOpenCalls >= this.options.halfOpenMaxCalls) {
-        throw new Error('半开状态测试调用次数已达上限');
-      }
-      this.halfOpenCalls++;
-    }
+    // Sync stats back to the shared breaker for getStats()
+    shot.on('success', () => {
+      this.breaker.emit('success');
+    });
+    shot.on('failure', () => {
+      this.breaker.emit('failure');
+    });
 
-    try {
-      const result = await fn();
-      this.onSuccess();
-      return result;
-    } catch (error) {
-      this.onFailure();
-      throw error;
-    }
+    return shot.fire() as Promise<T>;
   }
 
   /**
-   * 处理成功调用
-   */
-  private onSuccess(): void {
-    this.failureCount = 0;
-
-    if (this.state === CircuitState.HALF_OPEN) {
-      this.successCount++;
-      if (this.successCount >= this.options.halfOpenMaxCalls) {
-        this.transitionTo(CircuitState.CLOSED);
-      }
-    }
-  }
-
-  /**
-   * 处理失败调用
-   */
-  private onFailure(): void {
-    this.failureCount++;
-    this.lastFailureTime = Date.now();
-
-    if (this.state === CircuitState.HALF_OPEN) {
-      this.transitionTo(CircuitState.OPEN);
-    } else if (this.failureCount >= this.options.failureThreshold) {
-      this.transitionTo(CircuitState.OPEN);
-    }
-  }
-
-  /**
-   * 状态转换
-   * @param state - 目标状态
-   */
-  private transitionTo(state: CircuitState): void {
-    this.state = state;
-    if (state === CircuitState.CLOSED) {
-      this.failureCount = 0;
-      this.successCount = 0;
-      this.halfOpenCalls = 0;
-    } else if (state === CircuitState.HALF_OPEN) {
-      this.halfOpenCalls = 0;
-      this.successCount = 0;
-    }
-  }
-
-  /**
-   * 检查是否应该尝试重置熔断器
-   * @returns 是否可以尝试重置
-   */
-  private shouldAttemptReset(): boolean {
-    if (!this.lastFailureTime) return true;
-    return Date.now() - this.lastFailureTime >= this.options.resetTimeout;
-  }
-
-  /**
-   * 获取熔断器重置前的剩余等待时间
-   * @returns 剩余时间（毫秒）
-   */
-  private getRemainingTime(): number {
-    if (!this.lastFailureTime) return 0;
-    const elapsed = Date.now() - this.lastFailureTime;
-    return Math.max(0, this.options.resetTimeout - elapsed);
-  }
-
-  /**
-   * 获取当前熔断器状态
-   * @returns 当前状态
+   * Get the current circuit breaker state.
    */
   getState(): CircuitState {
-    return this.state;
+    return mapOpossumState(this.breaker.opened, this.breaker.halfOpen);
   }
 
   /**
-   * 获取熔断器统计信息
-   * @returns 统计信息对象
+   * Get circuit breaker statistics.
    */
   getStats(): { state: CircuitState; failureCount: number; successCount: number } {
+    const stats = this.breaker.stats;
     return {
-      state: this.state,
-      failureCount: this.failureCount,
-      successCount: this.successCount,
+      state: this.getState(),
+      failureCount: stats.failures,
+      successCount: stats.successes,
     };
   }
 }

@@ -1,53 +1,47 @@
+// ============================================================
+// Async Lock - backed by the async-lock npm package
+// ============================================================
+
+import AsyncLockLib from 'async-lock';
+
 /**
- * 异步锁 - 防止并发访问共享资源
- * 使用队列机制避免 Promise 链无限累积
+ * Async lock for preventing concurrent access to shared resources.
+ *
+ * Wraps the `async-lock` npm package to match the project's original
+ * `AsyncLock` API so that existing callers continue to work unchanged.
  */
 export class AsyncLock {
-  private queue: Array<{
-    resolve: (release: () => void) => void;
-    reject: (error: Error) => void;
-  }> = [];
-  private isLocked = false;
-  private maxQueueSize: number;
+  private lock: AsyncLockLib;
 
+  /**
+   * Create a new AsyncLock instance.
+   *
+   * @param maxQueueSize - Maximum number of queued acquires (default 100)
+   */
   constructor(maxQueueSize = 100) {
-    this.maxQueueSize = maxQueueSize;
-  }
-
-  async acquire<T>(fn: () => Promise<T>): Promise<T> {
-    const release = await this.lock();
-    try {
-      return await fn();
-    } finally {
-      release();
-    }
-  }
-
-  private async lock(): Promise<() => void> {
-    // 队列大小限制，防止内存泄漏
-    if (this.queue.length >= this.maxQueueSize) {
-      throw new Error('AsyncLock queue overflow: too many concurrent requests');
-    }
-
-    return new Promise((resolve, reject) => {
-      this.queue.push({ resolve, reject });
-      this.processQueue();
+    this.lock = new AsyncLockLib({
+      maxPending: maxQueueSize,
     });
   }
 
-  private processQueue(): void {
-    if (this.isLocked || this.queue.length === 0) {
-      return;
-    }
+  /**
+   * Acquire the lock, execute `fn`, then release.
+   *
+   * @param fn - The async function to execute while holding the lock
+   * @returns The return value of `fn`
+   */
+  async acquire<T>(fn: () => Promise<T>): Promise<T> {
+    return this.lock.acquire('__default__', fn) as Promise<T>;
+  }
 
-    this.isLocked = true;
-    const next = this.queue.shift()!;
-    
-    const release = () => {
-      this.isLocked = false;
-      this.processQueue();
-    };
-
-    next.resolve(release);
+  /**
+   * Acquire a named lock, execute `fn`, then release.
+   *
+   * @param key - Lock key for granular locking
+   * @param fn  - The async function to execute while holding the lock
+   * @returns The return value of `fn`
+   */
+  async acquireByKey<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    return this.lock.acquire(key, fn) as Promise<T>;
   }
 }

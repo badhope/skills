@@ -40,13 +40,20 @@
     "url": "https://github.com/badhope/DevFlow-Agent"
   },
   "dependencies": {
+    "async-lock": "^1.4.1",
     "boxen": "^8.0.1",
     "chalk": "^5.3.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.0.0",
+    "eventemitter3": "^5.0.4",
     "glob": "^13.0.6",
     "inquirer": "^9.2.15",
+    "js-tiktoken": "^1.0.21",
+    "lowdb": "^7.0.1",
+    "minisearch": "^7.2.0",
+    "opossum": "^9.0.0",
     "ora": "^8.2.0",
+    "p-retry": "^8.0.0",
     "picocolors": "^1.0.0",
     "pino": "^8.17.0",
     "pino-pretty": "^10.3.0",
@@ -61,9 +68,11 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/async-lock": "^1.4.2",
     "@types/glob": "^8.1.0",
     "@types/inquirer": "^9.0.7",
     "@types/node": "^20.11.0",
+    "@types/opossum": "^8.1.9",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",

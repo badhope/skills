@@ -1,260 +1,263 @@
-import type { Entity, Relationship, EntityType, RelationshipType } from './knowledge-types.js';
+/**
+ * 知识提取器
+ * 从文本中提取实体和关系，支持 LLM 驱动的 NER。
+ *
+ * 采用混合方案：
+ * - 设置 LLM 提取器后，使用 LLM 进行深度实体/关系提取
+ * - 未设置时，回退到轻量级正则提取（仅处理基本模式）
+ * - 通过 setLLMExtractor() 注入 LLM 提取函数实现渐进式迁移
+ */
+
+import type { EntityType, RelationshipType } from './knowledge-types.js';
 
 // ============================================================
-// 技术关键词列表
+// 类型定义
 // ============================================================
 
-const TECH_KEYWORDS: string[] = [
-  'JavaScript', 'TypeScript', 'Python', 'Rust', 'Go', 'Java', 'C++', 'C#',
-  'Ruby', 'PHP', 'Swift', 'Kotlin', 'Dart', 'Scala', 'Haskell', 'Elixir',
-  'React', 'Vue', 'Angular', 'Svelte', 'Next.js', 'Nuxt', 'Gatsby',
-  'Node.js', 'Deno', 'Bun', 'Express', 'Koa', 'Fastify', 'NestJS',
-  'Docker', 'Kubernetes', 'K8s', 'Terraform', 'Ansible',
-  'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'SQLite', 'Elasticsearch',
-  'GraphQL', 'REST', 'gRPC', 'WebSocket',
-  'Git', 'GitHub', 'GitLab', 'Bitbucket',
-  'AWS', 'Azure', 'GCP', 'Vercel', 'Netlify', 'Cloudflare',
-  'Linux', 'Ubuntu', 'Debian', 'CentOS', 'Alpine',
-  'TailwindCSS', 'Bootstrap', 'Sass', 'Less', 'CSS', 'HTML',
-  'Webpack', 'Vite', 'esbuild', 'Rollup', 'Turbopack',
-  'Jest', 'Vitest', 'Mocha', 'Cypress', 'Playwright',
-  'TensorFlow', 'PyTorch', 'OpenCV', 'Pandas', 'NumPy',
-  'Flutter', 'React Native', 'Electron', 'Tauri',
-  'Nginx', 'Apache', 'Caddy', 'Traefik',
-  'RabbitMQ', 'Kafka', 'Zookeeper', 'Consul',
-  'Elasticsearch', 'Logstash', 'Kibana', 'Prometheus', 'Grafana',
-  'OAuth', 'JWT', 'SAML', 'SSO', 'LDAP',
-  'CI/CD', 'GitHub Actions', 'Jenkins', 'Travis CI', 'CircleCI',
-  'Figma', 'Sketch', 'Adobe XD',
-  'Lua', 'Perl', 'R', 'MATLAB', 'Shell', 'Bash', 'PowerShell',
-  'Zig', 'Carbon', 'Nim', 'V', 'Crystal', 'Julia',
-  'SolidJS', 'Qwik', 'Astro', 'Remix', 'SolidStart',
-  'tRPC', 'Prisma', 'Drizzle', 'TypeORM', 'Sequelize',
-  'Supabase', 'Firebase', 'Appwrite', 'PocketBase',
-  'Hono', 'Fastify', 'Axum', 'Actix', 'Spring',
-  'Django', 'Flask', 'FastAPI', 'Rails', 'Laravel', 'Phoenix',
-  'Redis', 'Memcached', 'Cassandra', 'DynamoDB', 'CockroachDB',
-  'Neo4j', 'ArangoDB', 'InfluxDB', 'TimescaleDB',
-  'WebSocket', 'SSE', 'Socket.io', 'MQTT',
-  'OpenAI', 'Anthropic', 'LangChain', 'LlamaIndex',
-  'MCP', 'Claude', 'GPT', 'BERT', 'Transformer',
+/** 提取出的实体 */
+export interface ExtractedEntity {
+  type: EntityType;
+  label: string;
+  attributes?: Record<string, string>;
+}
+
+/** 提取出的关系 */
+export interface ExtractedRelation {
+  fromLabel: string;
+  toLabel: string;
+  type: RelationshipType;
+  weight: number;
+}
+
+/** 提取结果 */
+export interface ExtractionResult {
+  entities: ExtractedEntity[];
+  relationships: ExtractedRelation[];
+}
+
+/** LLM 提取函数签名 */
+export type LLMExtractorFn = (text: string) => Promise<ExtractionResult>;
+
+// ============================================================
+// 轻量级回退提取规则
+// ============================================================
+
+/** 基本身份提取模式 */
+const IDENTITY_PATTERNS = [
+  /我是\s*([^\s,，。.!！?？]+)/g,
+  /我叫\s*([^\s,，。.!！?？]+)/g,
+  /名字是\s*([^\s,，。.!！?？]+)/g,
 ];
 
-// ============================================================
-// 工具函数
-// ============================================================
+/** 基本使用关系模式 */
+const USAGE_PATTERNS = [
+  /(?:使用|用了|在用|正在用|采用)\s*([^\s,，。.!！?？]+)/g,
+];
+
+/** 基本偏好关系模式 */
+const PREFERENCE_PATTERNS = [
+  /(?:喜欢|偏好|常用|最爱)\s*([^\s,，。.!！?？]+)/g,
+];
+
+/** 基本项目提及模式 */
+const PROJECT_PATTERNS = [
+  /(?:项目叫|项目名为|项目名是)\s*([^\s,，。.!！?？]+)/g,
+];
 
 /**
- * 根据名称推断实体类型
- * @param name 名称
- * @param techKeywords 技术关键词列表
+ * 根据名称推断实体类型（轻量版）
+ * @param name - 实体名称
+ * @returns 推断的实体类型
  */
-export function inferEntityType(name: string, techKeywords: string[]): EntityType {
-  // 检查是否是技术关键词
-  if (techKeywords.some((tech) => tech.toLowerCase() === name.toLowerCase())) {
-    return 'tech';
-  }
-
-  // 检查是否包含编程语言常见后缀
+export function inferEntityType(name: string): EntityType {
+  // 编程语言文件后缀
   if (/\.(js|ts|py|rs|go|java|rb|php|swift|kt|dart|c|cpp|h|cs|lua|pl|r|m|sh|ps1)$/i.test(name)) {
     return 'tech';
   }
 
-  // 检查是否是框架/库名（驼峰或短横线命名）
+  // 驼峰命名或短横线命名（常见框架/库名）
   if (/^[A-Z][a-zA-Z0-9]*$/.test(name) || /^[a-z]+-[a-z]+(-[a-z]+)*$/.test(name)) {
     return 'tech';
   }
 
-  // 默认为概念
   return 'concept';
 }
 
 // ============================================================
-// 从记忆中提取实体和关系
+// KnowledgeExtractor 类
 // ============================================================
 
 /**
- * 从记忆记录中自动提取实体和关系
+ * 知识提取器
  *
- * 提取规则：
- * - "我是/叫/名字是 XXX" → 提取 person 实体
- * - "喜欢/偏好/常用 XXX" → 提取 likes 关系
- * - "使用/用了 XXX" → 提取 uses 关系
- * - "项目叫/名为 XXX" → 提取 project 实体
- * - 技术关键词（如 Rust, Python, React）→ 提取 tech 实体
- *
- * @param memories 记忆条目数组
- * @returns 提取的实体和关系
+ * 支持两种模式：
+ * 1. LLM 模式：通过 setLLMExtractor() 注入 LLM 提取函数，进行深度 NER
+ * 2. 回退模式：使用轻量级正则提取基本实体和关系
  */
-export function extractFromMemory(memories: Array<{ input: string; output?: string }>): {
-  entities: Array<{ type: EntityType; label: string; attributes?: Record<string, string> }>;
-  relationships: Array<{ fromLabel: string; toLabel: string; type: RelationshipType; weight: number }>;
-} {
-  const entities: Array<{ type: EntityType; label: string; attributes?: Record<string, string> }> = [];
-  const relationships: Array<{ fromLabel: string; toLabel: string; type: RelationshipType; weight: number }> = [];
+export class KnowledgeExtractor {
+  private llmExtractor: LLMExtractorFn | null = null;
 
-  // 当前用户实体（用于建立关系）
-  let currentUserLabel: string | undefined;
+  /**
+   * 注入 LLM 提取函数
+   *
+   * @param fn - LLM 提取函数，接收文本，返回结构化的实体和关系
+   */
+  setLLMExtractor(fn: LLMExtractorFn): void {
+    this.llmExtractor = fn;
+  }
 
-  // 用于去重的集合
-  const processedEntities = new Set<string>();
-  const processedRelationships = new Set<string>();
+  /**
+   * 从文本中提取实体和关系
+   *
+   * @param text - 输入文本
+   * @returns 提取结果（实体和关系列表）
+   */
+  async extract(text: string): Promise<ExtractionResult> {
+    if (!text || !text.trim()) {
+      return { entities: [], relationships: [] };
+    }
 
-  for (const memory of memories) {
-    const text = `${memory.input} ${memory.output || ''}`;
+    // 优先使用 LLM 提取器
+    if (this.llmExtractor) {
+      try {
+        return await this.llmExtractor(text);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[KnowledgeExtractor] LLM 提取失败，回退到正则: ${message}`);
+      }
+    }
 
-    // 规则 1: "我是/叫/名字是 XXX" → person 实体
-    const personPatterns = [
-      /我是\s*([^\s,，。.!！?？]+)/g,
-      /我叫\s*([^\s,，。.!！?？]+)/g,
-      /名字是\s*([^\s,，。.!！?？]+)/g,
-      /我的名字是\s*([^\s,，。.!！?？]+)/g,
-    ];
-    for (const pattern of personPatterns) {
+    // 回退到正则提取
+    return this.extractWithRegex(text);
+  }
+
+  /**
+   * 使用正则进行轻量级提取
+   *
+   * @param text - 输入文本
+   * @returns 提取结果
+   */
+  private extractWithRegex(text: string): ExtractionResult {
+    const entities: ExtractedEntity[] = [];
+    const relationships: ExtractedRelation[] = [];
+    const seenEntities = new Set<string>();
+    const seenRelations = new Set<string>();
+    let currentUserLabel: string | undefined;
+
+    const addEntity = (type: EntityType, label: string): void => {
+      const key = `${type}:${label}`;
+      if (!seenEntities.has(key)) {
+        entities.push({ type, label });
+        seenEntities.add(key);
+      }
+    };
+
+    const addRelation = (from: string, type: RelationshipType, to: string, weight: number): void => {
+      const key = `${from}:${type}:${to}`;
+      if (!seenRelations.has(key)) {
+        relationships.push({ fromLabel: from, toLabel: to, type, weight });
+        seenRelations.add(key);
+      }
+    };
+
+    // 提取身份信息
+    for (const pattern of IDENTITY_PATTERNS) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         const name = match[1].trim();
-        if (name && !processedEntities.has(`person:${name}`)) {
-          entities.push({ type: 'person', label: name });
-          processedEntities.add(`person:${name}`);
+        if (name) {
+          addEntity('person', name);
           currentUserLabel = name;
         }
       }
     }
 
-    // 规则 2: "喜欢/偏好/常用 XXX" → likes 关系
-    const likePatterns = [
-      /喜欢\s*([^\s,，。.!！?？]+)/g,
-      /偏好\s*([^\s,，。.!！?？]+)/g,
-      /常用\s*([^\s,，。.!！?？]+)/g,
-      /最爱\s*([^\s,，。.!！?？]+)/g,
-    ];
-    for (const pattern of likePatterns) {
+    // 提取使用关系
+    for (const pattern of USAGE_PATTERNS) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         const target = match[1].trim();
-        if (!target) continue;
-
-        const targetType = inferEntityType(target, TECH_KEYWORDS);
-        if (!processedEntities.has(`${targetType}:${target}`)) {
-          entities.push({ type: targetType, label: target });
-          processedEntities.add(`${targetType}:${target}`);
-        }
-
-        if (currentUserLabel) {
-          const relKey = `${currentUserLabel}:likes:${target}`;
-          if (!processedRelationships.has(relKey)) {
-            relationships.push({ fromLabel: currentUserLabel, toLabel: target, type: 'likes', weight: 0.7 });
-            processedRelationships.add(relKey);
-          }
+        if (target && currentUserLabel) {
+          const type = inferEntityType(target);
+          addEntity(type, target);
+          addRelation(currentUserLabel, 'uses', target, 0.6);
         }
       }
     }
 
-    // 规则 3: "使用/用了 XXX" → uses 关系
-    const usePatterns = [
-      /使用\s*([^\s,，。.!！?？]+)/g,
-      /用了\s*([^\s,，。.!！?？]+)/g,
-      /在用\s*([^\s,，。.!！?？]+)/g,
-      /正在用\s*([^\s,，。.!！?？]+)/g,
-      /采用\s*([^\s,，。.!！?？]+)/g,
-    ];
-    for (const pattern of usePatterns) {
+    // 提取偏好关系
+    for (const pattern of PREFERENCE_PATTERNS) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         const target = match[1].trim();
-        if (!target) continue;
-
-        const targetType = inferEntityType(target, TECH_KEYWORDS);
-        if (!processedEntities.has(`${targetType}:${target}`)) {
-          entities.push({ type: targetType, label: target });
-          processedEntities.add(`${targetType}:${target}`);
-        }
-
-        if (currentUserLabel) {
-          const relKey = `${currentUserLabel}:uses:${target}`;
-          if (!processedRelationships.has(relKey)) {
-            relationships.push({ fromLabel: currentUserLabel, toLabel: target, type: 'uses', weight: 0.6 });
-            processedRelationships.add(relKey);
-          }
+        if (target && currentUserLabel) {
+          const type = inferEntityType(target);
+          addEntity(type, target);
+          addRelation(currentUserLabel, 'likes', target, 0.7);
         }
       }
     }
 
-    // 规则 4: "项目叫/名为 XXX" → project 实体
-    const projectPatterns = [
-      /项目叫\s*([^\s,，。.!！?？]+)/g,
-      /项目名为\s*([^\s,，。.!！?？]+)/g,
-      /项目名是\s*([^\s,，。.!！?？]+)/g,
-      /项目[名是叫]\s*[""\u300c\u300d]([^""\u300c\u300d]+)[""\u300c\u300d]/g,
-    ];
-    for (const pattern of projectPatterns) {
+    // 提取项目信息
+    for (const pattern of PROJECT_PATTERNS) {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         const projectName = match[1].trim();
-        if (projectName && !processedEntities.has(`project:${projectName}`)) {
-          entities.push({ type: 'project', label: projectName });
-          processedEntities.add(`project:${projectName}`);
-
+        if (projectName) {
+          addEntity('project', projectName);
           if (currentUserLabel) {
-            const relKey = `${currentUserLabel}:created:${projectName}`;
-            if (!processedRelationships.has(relKey)) {
-              relationships.push({ fromLabel: currentUserLabel, toLabel: projectName, type: 'created', weight: 0.8 });
-              processedRelationships.add(relKey);
-            }
+            addRelation(currentUserLabel, 'created', projectName, 0.8);
           }
         }
       }
     }
 
-    // 规则 5: 技术关键词 → tech 实体
-    for (const tech of TECH_KEYWORDS) {
-      const escaped = tech.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-      if (regex.test(text)) {
-        if (!processedEntities.has(`tech:${tech}`)) {
-          entities.push({ type: 'tech', label: tech });
-          processedEntities.add(`tech:${tech}`);
+    return { entities, relationships };
+  }
+}
 
-          if (currentUserLabel) {
-            const relKey = `${currentUserLabel}:uses:${tech}`;
-            if (!processedRelationships.has(relKey)) {
-              relationships.push({ fromLabel: currentUserLabel, toLabel: tech, type: 'uses', weight: 0.5 });
-              processedRelationships.add(relKey);
-            }
-          }
-        }
+// ============================================================
+// 向后兼容的导出函数
+// ============================================================
+
+/**
+ * 从记忆中提取实体和关系（向后兼容函数）
+ *
+ * @param memories - 记忆条目数组
+ * @returns 提取的实体和关系
+ * @deprecated 建议使用 KnowledgeExtractor 类以获得 LLM 支持
+ */
+export function extractFromMemory(memories: Array<{ input: string; output?: string }>): {
+  entities: Array<{ type: EntityType; label: string; attributes?: Record<string, string> }>;
+  relationships: Array<{ fromLabel: string; toLabel: string; type: RelationshipType; weight: number }>;
+} {
+  const extractor = new KnowledgeExtractor();
+  const allEntities: ExtractedEntity[] = [];
+  const allRelationships: ExtractedRelation[] = [];
+  const seenEntities = new Set<string>();
+  const seenRelations = new Set<string>();
+
+  for (const memory of memories) {
+    const text = `${memory.input} ${memory.output || ''}`;
+    // 同步调用正则提取
+    const result = extractor['extractWithRegex'](text);
+
+    for (const entity of result.entities) {
+      const key = `${entity.type}:${entity.label}`;
+      if (!seenEntities.has(key)) {
+        allEntities.push(entity);
+        seenEntities.add(key);
       }
     }
 
-    // 额外规则: "知道/了解/熟悉 XXX" → knows 关系
-    const knowPatterns = [
-      /知道\s*([^\s,，。.!！?？]+)/g,
-      /了解\s*([^\s,，。.!！?？]+)/g,
-      /熟悉\s*([^\s,，。.!！?？]+)/g,
-    ];
-    for (const pattern of knowPatterns) {
-      let match: RegExpExecArray | null;
-      while ((match = pattern.exec(text)) !== null) {
-        const target = match[1].trim();
-        if (!target) continue;
-
-        const targetType = inferEntityType(target, TECH_KEYWORDS);
-        if (!processedEntities.has(`${targetType}:${target}`)) {
-          entities.push({ type: targetType, label: target });
-          processedEntities.add(`${targetType}:${target}`);
-        }
-
-        if (currentUserLabel) {
-          const relKey = `${currentUserLabel}:knows:${target}`;
-          if (!processedRelationships.has(relKey)) {
-            relationships.push({ fromLabel: currentUserLabel, toLabel: target, type: 'knows', weight: 0.6 });
-            processedRelationships.add(relKey);
-          }
-        }
+    for (const rel of result.relationships) {
+      const key = `${rel.fromLabel}:${rel.type}:${rel.toLabel}`;
+      if (!seenRelations.has(key)) {
+        allRelationships.push(rel);
+        seenRelations.add(key);
       }
     }
   }
 
-  return { entities, relationships };
+  return { entities: allEntities, relationships: allRelationships };
 }

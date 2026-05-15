@@ -1,75 +1,45 @@
-/**
- * Glob Pattern Utilities
- *
- * Shared utilities for glob pattern matching used across the codebase.
- * Supports simple glob patterns with *, **, and ? wildcards.
- */
+// ============================================================
+// Glob Pattern Utilities - backed by minimatch (via glob)
+// ============================================================
+
+import { Minimatch, makeRe } from 'minimatch';
 
 /**
  * Convert a glob pattern to a RegExp string.
  *
- * Handles:
- * - `*` matches anything except /
- * - `**` matches anything including /
- * - `?` matches single character except /
- * - `.` is escaped for regex safety
+ * Uses minimatch's makeRe to produce a regex source string,
+ * then strips anchors (^/$) to match the previous output contract.
+ *
+ * @param pattern - Glob pattern
+ * @returns A regex source string (without anchors)
  */
 export function globToRegex(pattern: string): string {
-  let result = '';
-  let i = 0;
-
-  while (i < pattern.length) {
-    const ch = pattern[i];
-
-    if (ch === '*') {
-      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
-        // ** matches any path segment(s)
-        if (i + 2 < pattern.length && pattern[i + 2] === '/') {
-          result += '(?:.*/)?';
-          i += 3;
-          continue;
-        } else {
-          result += '.*';
-          i += 2;
-          continue;
-        }
-      } else {
-        // * matches anything except /
-        result += '[^/]*';
-        i++;
-        continue;
-      }
-    } else if (ch === '?') {
-      result += '[^/]';
-      i++;
-      continue;
-    } else if (ch === '.' || ch === '+' || ch === '^' || ch === '$' || ch === '|' ||
-               ch === '(' || ch === ')' || ch === '[' || ch === ']' || ch === '{' ||
-               ch === '}' || ch === '\\') {
-      result += '\\' + ch;
-      i++;
-      continue;
-    } else {
-      result += ch;
-      i++;
-      continue;
-    }
+  const re = makeRe(pattern);
+  // minimatch may return false for invalid patterns; fall back to escaping.
+  if (!re) {
+    return pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
-
-  return result;
+  let source = re.source;
+  // Strip leading ^ and trailing $ anchors that minimatch adds
+  if (source.startsWith('^')) {
+    source = source.slice(1);
+  }
+  if (source.endsWith('$')) {
+    source = source.slice(0, -1);
+  }
+  return source;
 }
 
 /**
- * Simple glob pattern matching (* matches anything except /, ** matches anything, ? matches single char)
+ * Test whether str matches the given glob pattern.
  *
- * @param str - The string to test
- * @param pattern - Glob pattern to match against
- * @returns true if the string matches the pattern
+ * @param str     - The string to test
+ * @param pattern - Glob pattern
+ * @returns true when the string matches
  */
 export function globMatch(str: string, pattern: string): boolean {
-  const regexStr = globToRegex(pattern);
-  const regex = new RegExp(`^${regexStr}$`);
-  return regex.test(str);
+  const mm = new Minimatch(pattern);
+  return mm.match(str);
 }
 
 /**
@@ -77,16 +47,15 @@ export function globMatch(str: string, pattern: string): boolean {
  *
  * @param filePath - The file path to check
  * @param patterns - Array of glob patterns
- * @returns true if the file path matches any of the patterns
+ * @returns true if the file path matches any pattern
  */
 export function matchesAnyGlob(filePath: string, patterns: string[]): boolean {
   const normalized = filePath.replace(/\\/g, '/');
-
   for (const pattern of patterns) {
-    if (globMatch(normalized, pattern)) {
+    const mm = new Minimatch(pattern);
+    if (mm.match(normalized)) {
       return true;
     }
   }
-
   return false;
 }

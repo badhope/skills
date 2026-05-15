@@ -60,60 +60,11 @@ export function matchesAnyPattern(filePath: string, patterns: string[]): boolean
 }
 
 /**
- * Convert a glob pattern to a regex string.
- */
-function globToRegex(pattern: string): string {
-  let result = '';
-  let i = 0;
-
-  while (i < pattern.length) {
-    const ch = pattern[i];
-
-    if (ch === '*') {
-      if (i + 1 < pattern.length && pattern[i + 1] === '*') {
-        // ** matches any path segment(s)
-        if (i + 2 < pattern.length && pattern[i + 2] === '/') {
-          result += '(?:.*/)?';
-          i += 3;
-          continue;
-        } else {
-          result += '.*';
-          i += 2;
-          continue;
-        }
-      } else {
-        // * matches anything except /
-        result += '[^/]*';
-        i++;
-        continue;
-      }
-    } else if (ch === '?') {
-      result += '[^/]';
-      i++;
-      continue;
-    } else if (ch === '.' || ch === '+' || ch === '^' || ch === '$' || ch === '|' ||
-               ch === '(' || ch === ')' || ch === '[' || ch === ']' || ch === '{' ||
-               ch === '}' || ch === '\\') {
-      result += '\\' + ch;
-      i++;
-      continue;
-    } else {
-      result += ch;
-      i++;
-      continue;
-    }
-  }
-
-  return result;
-}
-
-/**
  * Simple glob matcher supporting *, **, and ? wildcards.
+ * Delegates to the shared globMatch from glob.ts.
  */
 export function matchesGlob(str: string, pattern: string): boolean {
-  const regexStr = globToRegex(pattern);
-  const regex = new RegExp(regexStr);
-  return regex.test(str);
+  return globMatch(str, pattern);
 }
 
 /**
@@ -162,18 +113,14 @@ export async function collectSourceFiles(
 
         // Check include patterns (if specified)
         if (includePatterns && includePatterns.length > 0) {
-          if (!matchesGlob(relativePath, includePatterns[0])) {
-            // Simple check - just use first pattern
-            // For more complex patterns, we'd need to iterate
-            let matched = false;
-            for (const pattern of includePatterns) {
-              if (matchesGlob(relativePath, pattern)) {
-                matched = true;
-                break;
-              }
+          let matched = false;
+          for (const pattern of includePatterns) {
+            if (matchesGlob(relativePath, pattern)) {
+              matched = true;
+              break;
             }
-            if (!matched) continue;
           }
+          if (!matched) continue;
         }
 
         files.push(fullPath);

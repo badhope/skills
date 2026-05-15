@@ -1,3 +1,13 @@
+// ============================================================
+// Retry utilities - backed by p-retry
+// ============================================================
+
+import pRetry, { AbortError } from 'p-retry';
+
+// ------------------------------------------------------------------
+// Public types (backward-compatible)
+// ------------------------------------------------------------------
+
 export interface RetryConfig {
   maxRetries: number;
   baseDelay: number;
@@ -6,8 +16,12 @@ export interface RetryConfig {
 
 export type ErrorCategory = 'rate_limit' | 'auth' | 'server' | 'timeout' | 'invalid_request' | 'unknown';
 
+// ------------------------------------------------------------------
+// Error classification (unchanged)
+// ------------------------------------------------------------------
+
 /**
- * 分类错误类型
+ * Classify an error into a category.
  */
 export function classifyError(error: Error | Response): ErrorCategory {
   if (error && typeof error === 'object' && 'status' in error) {
@@ -31,7 +45,7 @@ export function classifyError(error: Error | Response): ErrorCategory {
 }
 
 /**
- * 判断错误是否可重试
+ * Determine whether an error is retryable.
  */
 export function shouldRetry(error: Error | Response): boolean {
   const category = classifyError(error);
@@ -39,80 +53,63 @@ export function shouldRetry(error: Error | Response): boolean {
 }
 
 /**
- * 等待指定毫秒
+ * Sleep for the given number of milliseconds.
  */
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ------------------------------------------------------------------
+// p-retry based implementations
+// ------------------------------------------------------------------
+
 /**
- * 指数退避重试
+ * Retry an async function with exponential backoff using p-retry.
+ *
+ * @param fn          - The async function to execute
+ * @param config      - Retry configuration (maxRetries, baseDelay, maxDelay)
+ * @param shouldRetryFn - Optional custom retry predicate (default: shouldRetry)
+ * @returns The result of fn on first success
  */
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   config: RetryConfig,
-  shouldRetryFn: (error: Error) => boolean = shouldRetry
+  shouldRetryFn: (error: Error) => boolean = shouldRetry as (e: Error) => boolean,
 ): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt < config.maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (!shouldRetryFn(error as Error)) {
-        throw error;
+  return pRetry(fn, {
+    retries: config.maxRetries - 1,
+    signal: AbortSignal.timeout(config.maxDelay * config.maxRetries),
+    onFailedAttempt: (context) => {
+      if (!shouldRetryFn(context.error)) {
+        throw new AbortError(context.error.message);
       }
-
-      if (attempt === config.maxRetries - 1) {
-        throw error;
-      }
-
-      const delay = Math.min(
-        config.baseDelay * Math.pow(2, attempt) + Math.random() * 1000,
-        config.maxDelay
-      );
-
-      await sleep(delay);
-    }
-  }
-
-  throw lastError || new Error('重试次数已用尽');
+    },
+  });
 }
 
 /**
- * 指数退避重试（流式请求版）
+ * Retry a streaming request with exponential backoff.
+ *
+ * Identical to retryWithBackoff but kept as a separate export for
+ * backward compatibility with existing callers.
+ *
+ * @param fn          - The async function returning a Response
+ * @param config      - Retry configuration
+ * @param shouldRetryFn - Optional custom retry predicate
+ * @returns The Response from the first successful call
  */
 export async function retryStreamWithBackoff(
   fn: () => Promise<Response>,
   config: RetryConfig,
-  shouldRetryFn: (error: Error) => boolean = shouldRetry
+  shouldRetryFn: (error: Error) => boolean = shouldRetry as (e: Error) => boolean,
 ): Promise<Response> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt < config.maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (!shouldRetryFn(error as Error)) {
-        throw error;
+  return pRetry(fn, {
+    retries: config.maxRetries - 1,
+    signal: AbortSignal.timeout(config.maxDelay * config.maxRetries),
+    onFailedAttempt: (context) => {
+      if (!shouldRetryFn(context.error)) {
+        throw new AbortError(context.error.message);
       }
-
-      if (attempt === config.maxRetries - 1) {
-        throw error;
-      }
-
-      const delay = Math.min(
-        config.baseDelay * Math.pow(2, attempt) + Math.random() * 1000,
-        config.maxDelay
-      );
-
-      await sleep(delay);
-    }
-  }
-
-  throw lastError || new Error('重试次数已用尽');
+    },
+  });
 }

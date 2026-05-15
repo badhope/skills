@@ -1,3 +1,18 @@
+/**
+ * RAG 检索增强生成模块
+ *
+ * 使用 MiniSearch 进行全文搜索（BM25 排序），
+ * 结合 Embedding API 进行语义搜索，
+ * 通过 Reciprocal Rank Fusion 融合两种搜索结果。
+ *
+ * 设计原则：
+ * - MiniSearch 提供快速关键词搜索，特别适合代码标识符
+ * - Embedding API 提供语义理解能力
+ * - 两种搜索结果通过 RRF 融合，取长补短
+ * - API 调用失败时优雅降级，不抛错
+ */
+
+import MiniSearch from 'minisearch';
 import { MEMORY_DIR } from '../utils/index.js';
 import path from 'path';
 import fs from 'fs/promises';
@@ -15,19 +30,28 @@ import { AsyncLock } from '../utils/async-lock.js';
 export type { VectorDocument, SearchResult, RAGStats, EmbeddingApiResponse };
 
 // ============================================================
+// MiniSearch 文档类型
+// ============================================================
+
+/** MiniSearch 索引的文档结构 */
+interface SearchDocument {
+  /** 文档 ID */
+  id: string;
+  /** 文档文本内容 */
+  text: string;
+}
+
+// ============================================================
 // RAGModule 类
 // ============================================================
 
 /**
- * RAG 向量检索模块
+ * RAG 检索模块
  *
- * 接入阿里云百炼 text-embedding-v3 模型，生成 1024 维向量，
- * 支持内存存储 + 磁盘持久化，提供余弦相似度搜索。
- *
- * 设计原则：
- * - API 调用失败时优雅降级，返回 null 向量，不抛错
- * - 零外部依赖，仅使用 Node.js 内置 fetch
- * - ES Module 格式，import 使用 .js 后缀
+ * 混合检索方案：
+ * 1. MiniSearch BM25 全文搜索（快速，适合精确匹配和代码标识符）
+ * 2. Embedding 向量语义搜索（理解语义，适合自然语言查询）
+ * 3. Reciprocal Rank Fusion 融合排序
  */
 export class RAGModule {
   /** 阿里云百炼 API Key */
@@ -39,6 +63,9 @@ export class RAGModule {
   /** 内存中的文档向量库 */
   private documents: Map<string, VectorDocument> = new Map();
 
+  /** MiniSearch 全文搜索引擎 */
+  private miniSearch: MiniSearch<SearchDocument>;
+
   /** 是否已初始化 */
   private initialized = false;
 
@@ -48,6 +75,15 @@ export class RAGModule {
 
   constructor() {
     this.storagePath = path.join(MEMORY_DIR, 'vectors.json');
+    this.miniSearch = new MiniSearch<SearchDocument>({
+      fields: ['text'],
+      idField: 'id',
+      searchOptions: {
+        boost: { text: 1 },
+        prefix: true,
+        fuzzy: 0.2,
+      },
+    });
   }
 
   // ----------------------------------------------------------
@@ -64,11 +100,9 @@ export class RAGModule {
       if (this.initialized) return;
       this.apiKey = apiKey;
 
-      // 确保存储目录存在
       const dir = path.dirname(this.storagePath);
       await fs.mkdir(dir, { recursive: true });
 
-      // 从磁盘加载已有向量
       await this.load();
 
       this.initialized = true;
@@ -82,7 +116,7 @@ export class RAGModule {
   /**
    * 生成单个文本的向量
    * @param text - 输入文本
-   * @returns 1024 维向量数组，API 调用失败时返回 null
+   * @returns 向量数组，API 调用失败时返回 null
    */
   async embed(text: string): Promise<number[] | null> {
     if (!text || !text.trim()) return null;
@@ -116,7 +150,6 @@ export class RAGModule {
 
       return data.data[0].embedding;
     } catch (error) {
-      // 优雅降级：不抛错，仅记录日志
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[RAG] Embedding API 调用异常: ${message}`);
       return null;
@@ -126,15 +159,13 @@ export class RAGModule {
   /**
    * 批量生成向量
    * @param texts - 输入文本数组
-   * @returns 向量数组，每项对应输入文本，失败项为 null
-   * @description 自动分批处理，每批最多 BATCH_SIZE 条
+   * @returns 向量数组，失败项为 null
    */
   async embedBatch(texts: string[]): Promise<Array<number[] | null>> {
     if (!texts || texts.length === 0) return [];
 
     const results: Array<number[] | null> = new Array(texts.length).fill(null);
 
-    // 分批调用 API
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE);
       const validTexts = batch.map(t => (t && t.trim()) ? t.trim() : '');
@@ -156,7 +187,6 @@ export class RAGModule {
 
         if (!response.ok) {
           console.error(`[RAG] 批量 Embedding API 请求失败: ${response.status} ${response.statusText}`);
-          // 当前批次全部为 null，已在初始化时设置
           continue;
         }
 
@@ -168,7 +198,6 @@ export class RAGModule {
           }
         }
       } catch (error) {
-        // 优雅降级：当前批次全部为 null
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[RAG] 批量 Embedding API 调用异常: ${message}`);
       }
@@ -185,7 +214,6 @@ export class RAGModule {
    * 添加文档并生成向量
    * @param id - 文档唯一标识
    * @param text - 文档文本内容
-   * @description 如果 ID 已存在则更新，自动生成向量并保存
    */
   async addDocument(id: string, text: string): Promise<void> {
     await this.docLock.acquire(async () => {
@@ -194,7 +222,6 @@ export class RAGModule {
       const now = new Date().toISOString();
       const existing = this.documents.get(id);
 
-      // 生成向量
       const embedding = await this.embed(text);
 
       const doc: VectorDocument = {
@@ -207,7 +234,13 @@ export class RAGModule {
 
       this.documents.set(id, doc);
 
-      // 自动持久化
+      // 更新 MiniSearch 索引
+      if (existing) {
+        this.miniSearch.replace({ id, text });
+      } else {
+        this.miniSearch.add({ id, text });
+      }
+
       await this.save();
     });
   }
@@ -215,7 +248,6 @@ export class RAGModule {
   /**
    * 批量添加文档
    * @param items - 文档数组 [{id, text}]
-   * @description 使用批量 Embedding API 提升效率
    */
   async addDocuments(items: Array<{ id: string; text: string }>): Promise<void> {
     await this.docLock.acquire(async () => {
@@ -238,9 +270,14 @@ export class RAGModule {
         };
 
         this.documents.set(id, doc);
+
+        if (existing) {
+          this.miniSearch.replace({ id, text });
+        } else {
+          this.miniSearch.add({ id, text });
+        }
       }
 
-      // 自动持久化
       await this.save();
     });
   }
@@ -254,6 +291,7 @@ export class RAGModule {
     return this.docLock.acquire(async () => {
       const deleted = this.documents.delete(id);
       if (deleted) {
+        this.miniSearch.discard(id);
         await this.save();
       }
       return deleted;
@@ -278,31 +316,77 @@ export class RAGModule {
   }
 
   // ----------------------------------------------------------
-  // 向量搜索
+  // 混合搜索
   // ----------------------------------------------------------
 
   /**
-   * 余弦相似度搜索
+   * 混合搜索：BM25 全文搜索 + 语义向量搜索 + RRF 融合
+   *
    * @param query - 查询文本
    * @param topK - 返回最相似的前 K 个结果，默认 5
-   * @returns 按相似度降序排列的搜索结果
-   * @description 将查询文本转为向量后，与所有有效向量计算余弦相似度
+   * @returns 按融合分数降序排列的搜索结果
    */
   async search(query: string, topK = 5): Promise<SearchResult[]> {
     if (!query || !query.trim()) return [];
 
-    // 生成查询向量
-    const queryEmbedding = await this.embed(query);
-    if (!queryEmbedding) {
-      console.error('[RAG] 查询向量生成失败，无法执行搜索');
-      return [];
+    // 1. MiniSearch BM25 全文搜索
+    const bm25Results = this.searchWithMiniSearch(query, topK * 2);
+
+    // 2. Embedding 语义搜索
+    const semanticResults = await this.searchWithEmbedding(query, topK * 2);
+
+    // 3. 如果只有一种结果，直接返回
+    if (semanticResults.length === 0) {
+      return bm25Results.slice(0, topK);
+    }
+    if (bm25Results.length === 0) {
+      return semanticResults.slice(0, topK);
     }
 
-    // 计算与所有有效向量的相似度
+    // 4. Reciprocal Rank Fusion
+    return this.reciprocalRankFusion(bm25Results, semanticResults, topK);
+  }
+
+  /**
+   * 使用 MiniSearch 进行 BM25 全文搜索
+   *
+   * @param query - 查询文本
+   * @param limit - 最大返回数
+   * @returns 搜索结果列表
+   */
+  private searchWithMiniSearch(query: string, limit: number): SearchResult[] {
+    try {
+      const results = this.miniSearch.search(query, { prefix: true, fuzzy: 0.2 });
+      return results.slice(0, limit).map(result => {
+        const doc = this.documents.get(result.id);
+        return {
+          id: result.id,
+          text: doc?.text ?? '',
+          score: result.score,
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[RAG] MiniSearch 搜索异常: ${message}`);
+      return [];
+    }
+  }
+
+  /**
+   * 使用 Embedding 进行语义搜索
+   *
+   * @param query - 查询文本
+   * @param limit - 最大返回数
+   * @returns 搜索结果列表
+   */
+  private async searchWithEmbedding(query: string, limit: number): Promise<SearchResult[]> {
+    const queryEmbedding = await this.embed(query);
+    if (!queryEmbedding) return [];
+
     const scored: SearchResult[] = [];
 
     for (const doc of this.documents.values()) {
-      if (!doc.embedding) continue; // 跳过空向量
+      if (!doc.embedding) continue;
 
       const score = this.cosineSimilarity(queryEmbedding, doc.embedding);
       scored.push({
@@ -312,18 +396,62 @@ export class RAGModule {
       });
     }
 
-    // 按相似度降序排列，取 topK
     return scored
       .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
+      .slice(0, limit);
+  }
+
+  /**
+   * Reciprocal Rank Fusion 融合两组搜索结果
+   *
+   * @param resultsA - 第一组搜索结果（BM25）
+   * @param resultsB - 第二组搜索结果（语义）
+   * @param topK - 返回前 K 个结果
+   * @param k - RRF 常数（默认 60）
+   * @returns 融合后的搜索结果
+   */
+  private reciprocalRankFusion(
+    resultsA: SearchResult[],
+    resultsB: SearchResult[],
+    topK: number,
+    k = 60,
+  ): SearchResult[] {
+    const scoreMap = new Map<string, number>();
+    const docMap = new Map<string, SearchResult>();
+
+    // 计算结果 A 的 RRF 分数
+    for (let rank = 0; rank < resultsA.length; rank++) {
+      const result = resultsA[rank];
+      const rrfScore = 1 / (k + rank + 1);
+      scoreMap.set(result.id, (scoreMap.get(result.id) ?? 0) + rrfScore);
+      docMap.set(result.id, result);
+    }
+
+    // 计算结果 B 的 RRF 分数
+    for (let rank = 0; rank < resultsB.length; rank++) {
+      const result = resultsB[rank];
+      const rrfScore = 1 / (k + rank + 1);
+      scoreMap.set(result.id, (scoreMap.get(result.id) ?? 0) + rrfScore);
+      if (!docMap.has(result.id)) {
+        docMap.set(result.id, result);
+      }
+    }
+
+    // 按 RRF 分数降序排列
+    return Array.from(scoreMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topK)
+      .map(([id, score]) => {
+        const doc = docMap.get(id)!;
+        return { ...doc, score };
+      });
   }
 
   /**
    * 余弦相似度计算
    * @param a - 向量 A
    * @param b - 向量 B
-   * @returns 相似度分数（-1 ~ 1，通常 0 ~ 1）
-   * @description 公式：cos(θ) = (A·B) / (|A| * |B|)
+   * @returns 相似度分数（-1 ~ 1）
    */
   cosineSimilarity(a: number[], b: number[]): number {
     if (!a || !b || a.length !== b.length || a.length === 0) return 0;
@@ -350,7 +478,6 @@ export class RAGModule {
 
   /**
    * 保存向量数据到磁盘
-   * @description 将内存中的所有文档向量序列化为 JSON 写入文件
    */
   async save(): Promise<void> {
     await this.saveLock.acquire(async () => {
@@ -374,8 +501,7 @@ export class RAGModule {
   }
 
   /**
-   * 从磁盘加载向量数据
-   * @description 读取 JSON 文件并恢复到内存
+   * 从磁盘加载向量数据并重建 MiniSearch 索引
    */
   private async load(): Promise<void> {
     try {
@@ -383,12 +509,38 @@ export class RAGModule {
       const data = JSON.parse(content) as Record<string, VectorDocument>;
 
       this.documents.clear();
+      this.miniSearch = new MiniSearch<SearchDocument>({
+        fields: ['text'],
+        idField: 'id',
+        searchOptions: {
+          boost: { text: 1 },
+          prefix: true,
+          fuzzy: 0.2,
+        },
+      });
+
+      const searchDocs: SearchDocument[] = [];
+
       for (const [id, doc] of Object.entries(data)) {
         this.documents.set(id, doc);
+        searchDocs.push({ id, text: doc.text });
+      }
+
+      // 批量添加到 MiniSearch
+      if (searchDocs.length > 0) {
+        this.miniSearch.addAll(searchDocs);
       }
     } catch (error) {
-      // 文件不存在或解析失败时，初始化空库
       this.documents.clear();
+      this.miniSearch = new MiniSearch<SearchDocument>({
+        fields: ['text'],
+        idField: 'id',
+        searchOptions: {
+          boost: { text: 1 },
+          prefix: true,
+          fuzzy: 0.2,
+        },
+      });
     }
   }
 
@@ -432,6 +584,15 @@ export class RAGModule {
   async clear(): Promise<void> {
     await this.docLock.acquire(async () => {
       this.documents.clear();
+      this.miniSearch = new MiniSearch<SearchDocument>({
+        fields: ['text'],
+        idField: 'id',
+        searchOptions: {
+          boost: { text: 1 },
+          prefix: true,
+          fuzzy: 0.2,
+        },
+      });
       await this.save();
     });
   }

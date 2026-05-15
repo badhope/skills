@@ -2,24 +2,33 @@ import { describe, it, expect } from 'vitest';
 import { globMatch, matchesAnyGlob, globToRegex } from './glob.js';
 
 describe('globToRegex', () => {
-  it('should convert exact string', () => {
+  it('should produce a regex that matches exact string', () => {
     const regex = globToRegex('test.ts');
-    expect(regex).toBe('test\\.ts');
+    const re = new RegExp(`^${regex}$`);
+    expect(re.test('test.ts')).toBe(true);
+    expect(re.test('testtsx')).toBe(false);
   });
 
-  it('should convert * wildcard', () => {
+  it('should produce a regex that matches * wildcard', () => {
     const regex = globToRegex('*.ts');
-    expect(regex).toBe('[^/]*\\.ts');
+    const re = new RegExp(`^${regex}$`);
+    expect(re.test('test.ts')).toBe(true);
+    expect(re.test('src/test.ts')).toBe(false);
   });
 
-  it('should convert ** wildcard', () => {
+  it('should produce a regex that matches ** wildcard', () => {
     const regex = globToRegex('**/*.ts');
-    expect(regex).toBe('(?:.*/)?[^/]*\\.ts');
+    const re = new RegExp(`^${regex}$`);
+    expect(re.test('src/components/Button.ts')).toBe(true);
+    expect(re.test('Button.ts')).toBe(true);
   });
 
-  it('should convert ? wildcard', () => {
+  it('should produce a regex that matches ? wildcard', () => {
     const regex = globToRegex('test.?s');
-    expect(regex).toBe('test\\.[^/]s');
+    const re = new RegExp(`^${regex}$`);
+    expect(re.test('test.ts')).toBe(true);
+    expect(re.test('test.js')).toBe(true);
+    expect(re.test('test.tsx')).toBe(false);
   });
 });
 
