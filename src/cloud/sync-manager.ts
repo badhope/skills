@@ -15,12 +15,13 @@ import { createLogger } from '../services/logger.js';
 
 const logger = createLogger('SyncManager');
 
-function stripSecrets(config: Record<string, any>): Record<string, any> {
-  const sanitized = { ...config };
-  if (sanitized.providers) {
-    for (const [key, provider] of Object.entries(sanitized.providers)) {
+function stripSecrets(config: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...config } as Record<string, unknown>;
+  if (sanitized.providers && typeof sanitized.providers === 'object') {
+    const providers = sanitized.providers as Record<string, unknown>;
+    for (const [key, provider] of Object.entries(providers)) {
       if (provider && typeof provider === 'object' && 'apiKey' in provider) {
-        sanitized.providers[key] = { ...provider, apiKey: '***REDACTED***' };
+        providers[key] = { ...provider as object, apiKey: '***REDACTED***' };
       }
     }
   }

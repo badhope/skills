@@ -9,10 +9,21 @@ import { getErrorMessage } from '../../utils/error-handling.js';
 
 function validatePath(filePath: string): string {
   const resolved = path.resolve(filePath);
-  // Block access to sensitive system directories
-  const blocked = ['/etc', '/usr', '/bin', '/sbin', '/var', '/sys', '/proc', '/boot', '/dev'];
-  for (const dir of blocked) {
-    if (resolved.startsWith(dir + '/') || resolved === dir) {
+  
+  // Unix system paths
+  const unixBlocked = ['/etc', '/usr', '/bin', '/sbin', '/var', '/sys', '/proc', '/boot', '/dev'];
+  
+  // Windows system paths
+  const windowsBlocked = ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)'];
+  
+  // Select blocked paths based on platform
+  const allBlocked = process.platform === 'win32' 
+    ? [...windowsBlocked, ...unixBlocked]
+    : [...unixBlocked];
+  
+  for (const dir of allBlocked) {
+    const separator = process.platform === 'win32' ? '\\' : '/';
+    if (resolved.startsWith(dir + separator) || resolved === dir) {
       throw new Error(`Access denied: cannot operate on system path ${filePath}`);
     }
   }
@@ -82,6 +93,17 @@ export const searchFilesTool: ToolDefinition = {
         cwd: args.path,
         ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
       });
+      
+      // Validate regex pattern for potential ReDoS
+      const MAX_PATTERN_LENGTH = 100;
+      if (args.pattern.length > MAX_PATTERN_LENGTH) {
+        return { success: false, output: '', error: `Regex pattern too long (max ${MAX_PATTERN_LENGTH} characters)` };
+      }
+      // Check for nested quantifiers that can cause ReDoS
+      if (/\+|\*/.test(args.pattern) && /\([^)]*[+*][^)]*\)[+*]/.test(args.pattern)) {
+        return { success: false, output: '', error: 'Regex pattern contains potentially dangerous nested quantifiers' };
+      }
+      
       const regex = new RegExp(args.pattern, 'gi');
       const results: string[] = [];
       const MAX_RESULTS = 200;     // 最大结果数

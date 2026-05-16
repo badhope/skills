@@ -84,6 +84,17 @@ export class ToolRegistry {
   }
 
   /**
+   * 注销工具
+   */
+  unregister(name: string): boolean {
+    const existed = this.tools.delete(name);
+    if (existed) {
+      toolLogger.debug({ tool: name }, 'Tool unregistered');
+    }
+    return existed;
+  }
+
+  /**
    * 获取工具
    */
   get(name: string): ToolDefinition | undefined {
@@ -99,8 +110,9 @@ export class ToolRegistry {
 
   /**
    * 获取内部工具 Map（向后兼容）
+   * 返回 ReadonlyMap 类型以表明不应直接修改
    */
-  get toolsMap(): Map<string, ToolDefinition> {
+  get toolsMap(): ReadonlyMap<string, ToolDefinition> {
     return this.tools;
   }
 

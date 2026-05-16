@@ -66,7 +66,7 @@ export class MCPIntegration {
       const registeredNames: string[] = [];
       for (const [toolName, toolDef] of toolEntries) {
         const prefixedName = `${prefix}${toolName}`;
-        if (doRegister) toolRegistry.toolsMap.set(prefixedName, this.wrapToolDefinition(toolDef, prefixedName));
+        if (doRegister) toolRegistry.register(this.wrapToolDefinition(toolDef, prefixedName));
         registeredNames.push(prefixedName);
         this.integratedTools.set(prefixedName, { service: serviceName, tool: toolDef });
       }
@@ -84,7 +84,7 @@ export class MCPIntegration {
     const registered = this.integrated.get(serviceName);
     if (!registered) return;
     for (const toolName of registered) {
-      toolRegistry.toolsMap.delete(toolName);
+      toolRegistry.unregister(toolName);
       this.integratedTools.delete(toolName);
     }
     this.integrated.delete(serviceName);

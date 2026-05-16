@@ -12,6 +12,9 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { MEMORY_DIR } from '../utils/index.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('DecisionReflector');
 
 import type {
   Decision,
@@ -59,7 +62,10 @@ export class DecisionReflector {
         (data.reflections || []).map(([k, v]: [string, Reflection]) => [k, this.reviveDates(v)])
       );
       this.taskDecisions = new Map(data.taskDecisions || []);
-    } catch { /* 首次运行，尚无数据 */ }
+    } catch (error) {
+      // 首次运行，尚无数据 - 使用 debug 级别日志
+      logger.debug({ error: error instanceof Error ? error.message : String(error) }, 'No existing decision data to load');
+    }
   }
 
   /** 将当前所有内存数据持久化到磁盘 */
@@ -73,8 +79,8 @@ export class DecisionReflector {
       };
       await fs.writeFile(this.filePath, JSON.stringify(data, null, 2));
     } catch (error) {
-      // Silent fail for persistence - log at debug level
-      console.debug('Failed to save decision reflector data:', error);
+      // 持久化失败不应影响主流程，使用 debug 级别日志记录
+      logger.debug({ error: error instanceof Error ? error.message : String(error) }, 'Failed to save decision reflector data');
     }
   }
 
