@@ -1,5 +1,8 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('MemoryConsolidation');
 
 // ============================================================
 // 记忆整合与遗忘曲线系统
@@ -196,7 +199,7 @@ export class MemoryConsolidator {
             });
           }
         } catch (error: unknown) {
-          console.warn('[Consolidation] 文件搜索失败:', getErrorMsg(error));
+          logger.warn({ error }, '文件搜索失败');
         }
       }
 
@@ -209,7 +212,7 @@ export class MemoryConsolidator {
         try {
           await fs.unlink(path.join(memoryDir, `${memory.id}.json`));
         } catch (error: unknown) {
-          console.warn('[Consolidation] 模式计数失败:', getErrorMsg(error));
+          logger.warn({ error }, '模式计数失败');
         }
       }
 
@@ -220,7 +223,7 @@ export class MemoryConsolidator {
         patternsExtracted: this.extractPatterns(memories).length,
       };
     } catch (error: unknown) {
-      console.warn('[Consolidation] 大文件查找失败:', getErrorMsg(error));
+      logger.warn({ error }, '大文件查找失败');
       return emptyResult;
     }
   }

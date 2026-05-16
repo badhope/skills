@@ -9,6 +9,9 @@
  */
 
 import type { EntityType, RelationshipType } from './knowledge-types.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('KnowledgeExtractor');
 
 // ============================================================
 // 类型定义
@@ -123,7 +126,7 @@ export class KnowledgeExtractor {
         return await this.llmExtractor(text);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[KnowledgeExtractor] LLM 提取失败，回退到正则: ${message}`);
+        logger.error({ error }, `LLM 提取失败，回退到正则: ${message}`);
       }
     }
 

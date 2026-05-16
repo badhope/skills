@@ -3,6 +3,10 @@
  * 管理所有支持的编程语言的 tree-sitter 语法
  */
 
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('Languages');
+
 /** 支持的语言 */
 export type SupportedLanguage =
   | 'typescript'
@@ -53,7 +57,7 @@ export async function initLanguages(): Promise<void> {
       language: tsPkg.tsx,
     });
   } catch {
-    console.warn('tree-sitter-typescript 加载失败');
+    logger.warn('tree-sitter-typescript 加载失败');
   }
 
   // JavaScript
@@ -73,7 +77,7 @@ export async function initLanguages(): Promise<void> {
       language: jsLang,
     });
   } catch {
-    console.warn('tree-sitter-javascript 加载失败');
+    logger.warn('tree-sitter-javascript 加载失败');
   }
 
   // Python
@@ -87,7 +91,7 @@ export async function initLanguages(): Promise<void> {
       language: pyLang,
     });
   } catch {
-    console.warn('tree-sitter-python 加载失败');
+    logger.warn('tree-sitter-python 加载失败');
   }
 }
 

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { ConfigSchema } from './schemas.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ConfigValidation');
 
 export interface ValidationError {
   path: string;
@@ -49,9 +52,9 @@ export function validatePartialConfig(data: unknown) {
 export function validateConfigWithLogging(data: unknown): ValidationResult {
   const result = validateConfig(data);
   if (!result.valid && result.errors) {
-    console.error('[Config Validation] 配置验证失败:');
+    logger.error('配置验证失败');
     result.errors.forEach(err => {
-      console.error(`  - ${err.path}: ${err.message}`);
+      logger.error(`  - ${err.path}: ${err.message}`);
     });
   }
   return result;

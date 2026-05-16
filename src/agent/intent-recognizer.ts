@@ -8,6 +8,10 @@
  * - 通过 setLLMClassifier() 注入 LLM 分类函数实现渐进式迁移
  */
 
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('IntentRecognizer');
+
 /** 意图识别结果 */
 export interface IntentResult {
   /** 识别出的意图 */
@@ -140,7 +144,7 @@ export class IntentRecognizer {
         return await this.classifyWithLLM(input);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[IntentRecognizer] LLM 分类失败，回退到正则结果: ${message}`);
+        logger.error({ error }, `LLM 分类失败，回退到正则结果: ${message}`);
       }
     }
 

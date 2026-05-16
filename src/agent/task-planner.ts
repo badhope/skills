@@ -1,4 +1,7 @@
 import type { TaskStep } from './types.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('TaskPlanner');
 
 const MAX_STEPS_PER_TASK = 20; // 单个任务最大步骤数
 
@@ -25,7 +28,7 @@ export async function planTask(userInput: string, intent: string): Promise<TaskS
 
   const hasScopeCreepRisk = scopeCreepPatterns.some(p => p.test(lower));
   if (hasScopeCreepRisk) {
-    console.warn('[TaskPlanner] 警告: 任务范围可能过大，已自动限制执行步骤');
+    logger.warn('任务范围可能过大，已自动限制执行步骤');
   }
 
   // === 理解任务 ===

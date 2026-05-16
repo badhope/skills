@@ -8,6 +8,9 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('AutonomousGoals');
 
 // ==================== 常量定义 ====================
 
@@ -108,7 +111,7 @@ export class AutonomousGoalManager {
 
       // 限制目标数量
       if (newGoals.length >= MAX_GOALS) {
-        console.warn(`[AutonomousGoals] 生成了 ${results.length} 个目标，已限制为前 ${MAX_GOALS} 个`);
+        logger.warn(`生成了 ${results.length} 个目标，已限制为前 ${MAX_GOALS} 个`);
         break;
       }
     }

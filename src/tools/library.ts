@@ -1,6 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ToolLibrary');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,7 +91,7 @@ export class ToolLibrary {
             } catch (e: unknown) {
               toolDef = await this.parseToolFromSource(entry.name, toolPath);
               if (!toolDef) {
-                console.warn(`⚠️  无法加载工具 ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+                logger.warn(`无法加载工具 ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
                 continue;
               }
             }
@@ -113,11 +116,11 @@ export class ToolLibrary {
             };
           }
         } catch (e: unknown) {
-          console.warn(`⚠️  跳过工具 ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
+          logger.warn(`跳过工具 ${entry.name}: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
     } catch (error) {
-      console.error(`❌ 加载工具库索引失败: ${error}`);
+      logger.error({ error }, '加载工具库索引失败');
     }
 
     this.index = {

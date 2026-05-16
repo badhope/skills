@@ -14,6 +14,9 @@ import type {
   ToolDefinition,
   CommandDefinition,
 } from './types.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('PluginRegistry');
 
 /** A tool registration entry with its source plugin */
 export interface ToolRegistration {
@@ -89,9 +92,7 @@ export class PluginRegistry {
   integrateTools(toolRegistry: Map<string, ToolDefinition>): void {
     for (const [name, { definition }] of this.pendingTools) {
       if (toolRegistry.has(name)) {
-        console.warn(
-          `[PluginRegistry] Tool "${name}" is already registered; overwriting with plugin version`,
-        );
+        logger.warn(`Tool "${name}" is already registered; overwriting with plugin version`);
       }
       toolRegistry.set(name, definition);
     }

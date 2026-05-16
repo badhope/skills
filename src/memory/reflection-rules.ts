@@ -12,6 +12,10 @@
 // 类型定义
 // ============================================================
 
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ReflectionEngine');
+
 /** 记忆洞察 */
 export interface MemoryInsight {
   id: string;
@@ -114,7 +118,7 @@ export class ReflectionEngine {
         insights = await this.llmReflector(memories);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`[ReflectionEngine] LLM 反思失败，回退到统计分析: ${message}`);
+        logger.error({ error }, `LLM 反思失败，回退到统计分析: ${message}`);
         insights = this.reflectWithStats(memories);
       }
     } else {

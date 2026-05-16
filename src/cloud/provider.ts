@@ -106,7 +106,7 @@ export class GistSyncProvider implements SyncProvider {
             if (res.statusCode && res.statusCode < 300) {
               try {
                 resolve(data ? JSON.parse(data) : {});
-              } catch (e) {
+              } catch (e: unknown) {
                 reject(new Error(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`));
               }
             } else {
@@ -149,7 +149,7 @@ export class CustomSyncProvider implements SyncProvider {
             if (res.statusCode && res.statusCode < 300) {
               try {
                 resolve(data ? JSON.parse(data) : {});
-              } catch (e) {
+              } catch (e: unknown) {
                 reject(new Error(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`));
               }
             } else {

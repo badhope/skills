@@ -11,6 +11,9 @@ import { createSyncProvider, type SyncProvider } from './provider.js';
 import { configManager } from '../config/manager.js';
 import { memoryManager } from '../memory/manager.js';
 import { AsyncLock } from '../utils/async-lock.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('SyncManager');
 
 function stripSecrets(config: Record<string, any>): Record<string, any> {
   const sanitized = { ...config };
@@ -98,7 +101,7 @@ export class SyncManager {
     this.ensureCleanup();
     const interval = (intervalMinutes || this.config.syncInterval || 5) * 60 * 1000;
     this.stopAutoSync();
-    this.syncInterval = setInterval(() => this.sync().catch(e => console.error('[Sync] Auto sync failed:', e)), interval);
+    this.syncInterval = setInterval(() => this.sync().catch(e => logger.error({ error: e }, 'Auto sync failed')), interval);
   }
 
   stopAutoSync(): void { if (this.syncInterval) { clearInterval(this.syncInterval); this.syncInterval = undefined; } }

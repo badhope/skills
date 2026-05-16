@@ -16,6 +16,9 @@ import { KnowledgeGraph } from '../memory/knowledgeGraph.js';
 import { memoryManager } from '../memory/manager.js';
 import type { CodeIndex, IndexEntry } from '../analysis/indexer/types.js';
 import type { MemoryRecord } from '../memory/memory-types.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ContextBuilder');
 
 /** Options for building context */
 export interface BuildContextOptions {
@@ -185,7 +188,7 @@ export class ContextBuilder {
 
       return result.map || null;
     } catch (error) {
-      console.warn(`[ContextBuilder] Failed to generate repo map: ${error}`);
+      logger.warn({ error }, 'Failed to generate repo map');
       return null;
     }
   }
@@ -207,7 +210,7 @@ export class ContextBuilder {
 
       return results;
     } catch (error) {
-      console.warn(`[ContextBuilder] Code search failed: ${error}`);
+      logger.warn({ error }, 'Code search failed');
       return [];
     }
   }
@@ -240,7 +243,7 @@ export class ContextBuilder {
 
       return scored;
     } catch (error) {
-      console.warn(`[ContextBuilder] Knowledge graph query failed: ${error}`);
+      logger.warn({ error }, 'Knowledge graph query failed');
       return [];
     }
   }
@@ -252,7 +255,7 @@ export class ContextBuilder {
     try {
       return await memoryManager.recall(query, 3);
     } catch (error) {
-      console.warn(`[ContextBuilder] Memory query failed: ${error}`);
+      logger.warn({ error }, 'Memory query failed');
       return [];
     }
   }

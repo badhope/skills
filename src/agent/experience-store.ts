@@ -12,6 +12,9 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { MEMORY_DIR } from '../utils/index.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ExperienceStore');
 
 // ==================== 接口定义 ====================
 
@@ -66,8 +69,7 @@ export class ExperienceStore {
       await fs.writeFile(this.filePath, JSON.stringify(this.experiences, null, 2), 'utf-8');
     } catch (error) {
       // 持久化失败不应阻断主流程
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.warn(`[ExperienceStore] 保存失败: ${errorMsg}`);
+      logger.warn({ error }, '保存失败');
     }
   }
 
