@@ -102,7 +102,7 @@ export class ReviewRulesEngine {
     this.eslint = new ESLint({
       cwd: this.cwd,
       useEslintrc: hasLocalConfig,
-      overrideConfig: hasLocalConfig ? undefined : DEFAULT_ESLINT_CONFIG as unknown as ESLint.ConfigData,
+      overrideConfig: hasLocalConfig ? undefined : DEFAULT_ESLINT_CONFIG,
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'],
     } as ESLint.Options);
 

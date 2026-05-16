@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { toolRegistry } from '../../tools/registry.js';
 import { printHeader, printSection, printSuccess, printError, printInfo } from '../../ui/logo.js';
+import { MAX_OUTPUT_DISPLAY_CHARS } from '../../constants/index.js';
 
 export const toolsExecCommand = new Command('exec')
   .description('工具执行（列表/运行/管道）');
@@ -131,8 +132,8 @@ toolsExecCommand
     if (result.success) {
       printSuccess('执行成功');
       if (result.output.trim()) {
-        console.log(chalk.white('\n' + result.output.slice(0, 5000)));
-        if (result.output.length > 5000) {
+        console.log(chalk.white('\n' + result.output.slice(0, MAX_OUTPUT_DISPLAY_CHARS)));
+        if (result.output.length > MAX_OUTPUT_DISPLAY_CHARS) {
           console.log(chalk.gray(`\n... (输出已截断，共 ${result.output.length} 字符)`));
         }
       }
@@ -232,7 +233,7 @@ toolsExecCommand
       console.log(JSON.stringify({ success: true, output: currentOutput }, null, 2));
     } else {
       printSuccess('管道执行完成');
-      console.log(chalk.white('\n' + currentOutput.slice(0, 5000)));
+      console.log(chalk.white('\n' + currentOutput.slice(0, MAX_OUTPUT_DISPLAY_CHARS)));
     }
   });
 

@@ -256,7 +256,7 @@ describe('validateConfig', () => {
     const result = validateConfig(config);
     expect(result.valid).toBe(false);
     expect(result.errors).toBeDefined();
-    expect(result.errors!.length).toBeGreaterThan(0);
+    expect((result.errors ?? []).length).toBeGreaterThan(0);
   });
 
   it('should include path in error messages', () => {

@@ -152,11 +152,11 @@ ${diff.slice(0, 3000)}`;
     let filtered = files;
 
     if (this.config.includePattern) {
-      filtered = filtered.filter(f => this.config.includePattern!.test(f));
+      filtered = filtered.filter(f => this.config.includePattern?.test(f) ?? false);
     }
 
     if (this.config.excludePattern) {
-      filtered = filtered.filter(f => !this.config.excludePattern!.test(f));
+      filtered = filtered.filter(f => !(this.config.excludePattern?.test(f) ?? false));
     }
 
     return filtered;

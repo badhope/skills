@@ -6,16 +6,24 @@ import { HELP_TREE } from './help-data.js';
 // Re-export 类型
 export type { HelpTopic };
 
+/** Sentinel value for "go back" action in help navigation */
+const GO_BACK_SENTINEL = '__go_back__';
+
+/** Type guard to check if a value is a valid HelpTopic (not the go-back sentinel) */
+function isHelpTopic(value: HelpTopic | typeof GO_BACK_SENTINEL): value is HelpTopic {
+  return value !== GO_BACK_SENTINEL;
+}
+
 async function showHelpLevel(topics: HelpTopic[], title: string): Promise<HelpTopic | null> {
   const choices = topics.map(t => ({
     name: t.description ? `${t.title}  ${chalk.gray(t.description)}` : t.title,
-    value: t,
+    value: t as HelpTopic | typeof GO_BACK_SENTINEL,
     short: t.title,
   }));
 
   choices.push({
     name: chalk.gray('\u2190 返回上级'),
-    value: null as unknown as HelpTopic,
+    value: GO_BACK_SENTINEL,
     short: '返回',
   });
 
@@ -29,7 +37,8 @@ async function showHelpLevel(topics: HelpTopic[], title: string): Promise<HelpTo
       loop: false,
     }]);
 
-    return (answers as { topic: HelpTopic | null }).topic;
+    const result = (answers as { topic: HelpTopic | typeof GO_BACK_SENTINEL }).topic;
+    return isHelpTopic(result) ? result : null;
   } catch {
     return null;
   }

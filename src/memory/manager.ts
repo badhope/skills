@@ -9,6 +9,7 @@ import type { MemoryInteraction, MemoryRecord, MemoryStats, MemoryInteractionWit
 import { AsyncLock } from '../utils/async-lock.js';
 import { createLogger } from '../services/logger.js';
 import { CACHE_TTL_MS } from '../constants/index.js';
+import { getErrorMessage } from '../utils/error-handling.js';
 
 const logger = createLogger('memory');
 
@@ -167,8 +168,8 @@ export class MemoryManager {
         void (async () => {
           try {
             await this.consolidator.runConsolidationCycle(this.storagePath);
-          } catch (err) {
-            logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Auto consolidation failed');
+          } catch (error: unknown) {
+            logger.warn({ error: getErrorMessage(error) }, 'Auto consolidation failed');
           }
         })();
       }

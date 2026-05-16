@@ -104,11 +104,20 @@ export function findPaths(
   const adjacency = new Map<string, Array<{ neighborId: string; relType: RelationshipType }>>();
   for (const rel of relationships) {
     // 双向添加
-    if (!adjacency.has(rel.fromId)) adjacency.set(rel.fromId, []);
-    if (!adjacency.has(rel.toId)) adjacency.set(rel.toId, []);
+    const fromNeighbors = adjacency.get(rel.fromId);
+    const toNeighbors = adjacency.get(rel.toId);
 
-    adjacency.get(rel.fromId)!.push({ neighborId: rel.toId, relType: rel.type });
-    adjacency.get(rel.toId)!.push({ neighborId: rel.fromId, relType: rel.type });
+    if (fromNeighbors) {
+      fromNeighbors.push({ neighborId: rel.toId, relType: rel.type });
+    } else {
+      adjacency.set(rel.fromId, [{ neighborId: rel.toId, relType: rel.type }]);
+    }
+
+    if (toNeighbors) {
+      toNeighbors.push({ neighborId: rel.fromId, relType: rel.type });
+    } else {
+      adjacency.set(rel.toId, [{ neighborId: rel.fromId, relType: rel.type }]);
+    }
   }
 
   // DFS

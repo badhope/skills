@@ -17,6 +17,7 @@ import type {
 import { eventBus } from './event-bus.js';
 import { pluginRegistry } from './registry.js';
 import { createLogger } from '../services/logger.js';
+import { getErrorMessage } from '../utils/error-handling.js';
 
 const pluginLoaderLogger = createLogger('PluginLoader');
 
@@ -144,8 +145,8 @@ export class PluginLoader {
       });
 
       return plugin;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
       this.states.set(manifest.name, {
         manifest,
         state: 'error',
@@ -174,8 +175,8 @@ export class PluginLoader {
         state: 'activated',
         activatedAt: Date.now(),
       });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
       this.states.set(pluginName, {
         manifest: plugin.manifest,
         state: 'error',
@@ -204,8 +205,8 @@ export class PluginLoader {
         state: 'deactivated',
       });
       eventBus.removeAllForPlugin(pluginName);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
       this.states.set(pluginName, {
         manifest: plugin.manifest,
         state: 'error',
@@ -227,8 +228,8 @@ export class PluginLoader {
         await this.load(manifest);
         const context = contextFactory(manifest);
         await this.activate(manifest.name, context);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+      } catch (error: unknown) {
+        const msg = getErrorMessage(error);
         pluginLoaderLogger.error({ plugin: manifest.name, error: msg }, 'Failed to load/activate plugin');
       }
     }

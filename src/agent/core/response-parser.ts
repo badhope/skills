@@ -116,6 +116,17 @@ export function parseToolCall(response: string): ParseResult<ToolCall> {
 }
 
 /**
+ * Type guard to check if a value looks like a tool call object.
+ */
+function isToolCallLike(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+/**
  * 从 AI 响应中解析多个工具调用
  *
  * @param response AI 响应文本
@@ -145,70 +156,72 @@ export function parseMultipleToolCalls(response: string): ParseResult<ToolCall[]
     };
   }
 
+  let parsedArray: unknown[];
   try {
-    const parsedArray = JSON.parse(arrayMatch[0]) as unknown[];
-    if (!Array.isArray(parsedArray)) {
+    const parsed = JSON.parse(arrayMatch[0]);
+    if (!Array.isArray(parsed)) {
       return {
         success: false,
         error: '解析结果不是数组',
         rawResponse: response,
       };
     }
-
-    const toolCalls: ToolCall[] = [];
-    const errors: string[] = [];
-
-    for (let i = 0; i < parsedArray.length; i++) {
-      const item = parsedArray[i];
-      if (typeof item !== 'object' || item === null) {
-        errors.push(`第 ${i + 1} 项不是有效对象`);
-        continue;
-      }
-
-      const toolName = (item as Record<string, unknown>).tool ||
-                       (item as Record<string, unknown>).toolName ||
-                       (item as Record<string, unknown>).name;
-
-      if (!toolName) {
-        errors.push(`第 ${i + 1} 项缺少工具名称`);
-        continue;
-      }
-
-      if (!toolRegistry.has(String(toolName))) {
-        errors.push(`第 ${i + 1} 项的工具 "${toolName}" 不存在`);
-        continue;
-      }
-
-      toolCalls.push({
-        tool: String(toolName),
-        args: ((item as Record<string, unknown>).args ||
-               (item as Record<string, unknown>).arguments ||
-               {}) as Record<string, unknown>,
-        reasoning: String((item as Record<string, unknown>).reasoning ||
-                         (item as Record<string, unknown>).reason ||
-                         ''),
-      });
-    }
-
-    if (toolCalls.length === 0) {
-      return {
-        success: false,
-        error: `未能解析出任何有效工具调用: ${errors.join('; ')}`,
-        rawResponse: response,
-      };
-    }
-
-    return {
-      success: true,
-      data: toolCalls,
-    };
-  } catch (error) {
+    parsedArray = parsed;
+  } catch (parseError) {
     return {
       success: false,
-      error: `解析 JSON 数组失败: ${error instanceof Error ? error.message : String(error)}`,
+      error: `JSON 解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
       rawResponse: response,
     };
   }
+
+  const toolCalls: ToolCall[] = [];
+  const errors: string[] = [];
+
+  for (let i = 0; i < parsedArray.length; i++) {
+    const item = parsedArray[i];
+    if (!isToolCallLike(item)) {
+      errors.push(`第 ${i + 1} 项不是有效对象`);
+      continue;
+    }
+
+    const toolName = item.tool ||
+                     item.toolName ||
+                     item.name;
+
+    if (!toolName) {
+      errors.push(`第 ${i + 1} 项缺少工具名称`);
+      continue;
+    }
+
+    if (!toolRegistry.has(String(toolName))) {
+      errors.push(`第 ${i + 1} 项的工具 "${toolName}" 不存在`);
+      continue;
+    }
+
+    toolCalls.push({
+      tool: String(toolName),
+      args: (item.args ||
+             item.arguments ||
+             {}) as Record<string, unknown>,
+      reasoning: String(item.reasoning ||
+                       item.reason ||
+                       ''),
+    });
+  }
+
+  if (toolCalls.length === 0) {
+    return {
+      success: false,
+      error: `未能解析出任何有效工具调用: ${errors.join('; ')}`,
+      rawResponse: response,
+    };
+  }
+
+  return {
+    success: true,
+    data: toolCalls,
+  };
 }
 
 /**

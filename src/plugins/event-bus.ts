@@ -5,6 +5,7 @@
 import EventEmitter3 from 'eventemitter3';
 import { createLogger } from '../services/logger.js';
 import type { PluginHook, HookHandler } from './types.js';
+import { getErrorMessage } from '../utils/error-handling.js';
 
 /** Plugin system logger */
 const logger = createLogger('plugins');
@@ -92,10 +93,10 @@ export class EventBus {
     for (const entry of list) {
       try {
         await entry.handler(...args);
-      } catch (err) {
+      } catch (error: unknown) {
         // Prevent one failing handler from blocking others
         logger.error(
-          `Handler error on "${hook}" from plugin "${entry.pluginName}": ${err instanceof Error ? err.message : String(err)}`,
+          `Handler error on "${hook}" from plugin "${entry.pluginName}": ${getErrorMessage(error)}`,
         );
       }
     }

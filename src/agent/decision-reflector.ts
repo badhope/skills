@@ -91,7 +91,10 @@ export class DecisionReflector {
   private reviveDates<T>(obj: T): T {
     if (obj === null || typeof obj !== 'object') return obj;
     if (obj instanceof Date) return obj as T;
-    if (Array.isArray(obj)) return obj.map(item => this.reviveDates(item)) as unknown as T;
+    if (Array.isArray(obj)) {
+      // Safe array mapping with proper type inference
+      return obj.map(item => this.reviveDates(item)) as T;
+    }
     const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
       result[key] = (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value))
@@ -122,10 +125,12 @@ export class DecisionReflector {
       timestamp: new Date()
     };
     this.decisions.set(decision.id, decision);
-    if (!this.taskDecisions.has(taskId)) {
-      this.taskDecisions.set(taskId, []);
+    const taskDecisionIds = this.taskDecisions.get(taskId);
+    if (taskDecisionIds) {
+      taskDecisionIds.push(decision.id);
+    } else {
+      this.taskDecisions.set(taskId, [decision.id]);
     }
-    this.taskDecisions.get(taskId)!.push(decision.id);
     this.debouncedSave();
     return decision.id;
   }
@@ -244,7 +249,7 @@ export class DecisionReflector {
     }
     if (query?.dateRange && query.dateRange.start && query.dateRange.end) {
       results = results.filter(r =>
-        r.timestamp >= query.dateRange!.start && r.timestamp <= query.dateRange!.end
+        r.timestamp >= (query.dateRange?.start ?? r.timestamp) && r.timestamp <= (query.dateRange?.end ?? r.timestamp)
       );
     }
     if (query?.successThreshold !== undefined) {
@@ -265,7 +270,7 @@ export class DecisionReflector {
   async getStats(): Promise<DecisionStats> {
     const decisions = Array.from(this.decisions.values());
     const completed = decisions.filter(d => d.outcome !== undefined);
-    const successful = completed.filter(d => d.outcome!.success);
+    const successful = completed.filter(d => d.outcome?.success ?? false);
     const categoryCounts: Record<string, number> = {};
     for (const decision of decisions) {
       const category = this.inferCategory(decision);
@@ -297,13 +302,13 @@ export class DecisionReflector {
   }> {
     const decisions = Array.from(this.decisions.values());
     const completed = decisions.filter(d => d.outcome !== undefined);
-    const successful = completed.filter(d => d.outcome!.success);
+    const successful = completed.filter(d => d.outcome?.success ?? false);
     const successRate = completed.length > 0 ? successful.length / completed.length : 0;
     const avgConfidence = decisions.length > 0
       ? decisions.reduce((sum, d) => sum + d.confidence, 0) / decisions.length : 0;
     const commonMistakes = decisions
       .filter(d => d.outcome && !d.outcome.success && d.outcome.gapAnalysis)
-      .map(d => d.outcome!.gapAnalysis);
+      .map(d => d.outcome?.gapAnalysis ?? '');
     const toolCounts: Record<string, number> = {};
     for (const d of decisions) {
       toolCounts[d.chosenAlternative] = (toolCounts[d.chosenAlternative] || 0) + 1;

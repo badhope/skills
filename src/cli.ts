@@ -37,6 +37,7 @@ import fs from 'fs/promises';
 import { syncManager } from './cloud/sync-manager.js';
 import { DEVFLOW_DIR } from './utils/index.js';
 import { decisionReflector } from './agent/decision-reflector.js';
+import { SHUTDOWN_DELAY_MS } from './constants/index.js';
 
 // 全局状态追踪
 let currentSessionId: string | null = null;
@@ -76,12 +77,12 @@ const cleanup = async () => {
     // 4. 执行最后一次同步（非阻塞，最多等待 3 秒）
     await Promise.race([
       syncManager.sync().catch(() => {}),
-      new Promise(resolve => setTimeout(resolve, 3000))
+      new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAY_MS))
     ]);
     
     console.log('✓ 状态保存完成');
-  } catch (err) {
-    logger.error({ error: err }, 'Error saving state');
+  } catch (error: unknown) {
+    logger.error({ error: getErrorMessage(error) }, 'Error saving state');
   }
 };
 

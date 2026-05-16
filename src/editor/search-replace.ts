@@ -202,10 +202,12 @@ export async function executeMultipleSearchReplace(
       : blockPath;
     const key = resolvedPath || '__default__';
 
-    if (!fileGroups.has(key)) {
-      fileGroups.set(key, []);
+    const groupBlocks = fileGroups.get(key);
+    if (groupBlocks) {
+      groupBlocks.push(block);
+    } else {
+      fileGroups.set(key, [block]);
     }
-    fileGroups.get(key)!.push(block);
   }
 
   const results: SearchReplaceResult[] = [];

@@ -28,6 +28,7 @@ import { projectConfigLoader } from '../config/project-config.js';
 import { intentRecognizer } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { generateSummary, parseToolArgsFromAI } from './agent-utils.js';
+import { DEFAULT_CONTEXT_TOKENS, TASK_TIMEOUT_MS } from '../constants/index.js';
 import chalk from 'chalk';
 import type { TaskStep, Task } from './types.js';
 import type { CodeIndex } from '../analysis/indexer/types.js';
@@ -115,7 +116,7 @@ export class AgentExecutor {
     this.onStepChange = onStepChange;
     this.onOutput = onOutput;
     this.rootDir = options?.rootDir || process.cwd();
-    this.contextManager = new ContextManager(8000);
+    this.contextManager = new ContextManager(DEFAULT_CONTEXT_TOKENS);
     this.contextBuilder = new ContextBuilder();
     this.dirtyProtect = new DirtyProtect(this.rootDir);
     this.autoCommit = new AutoCommitEngine(this.rootDir);
@@ -289,7 +290,6 @@ export class AgentExecutor {
     agentLogger.debug({ taskId: this.task.id }, 'Phase 3: Executing steps');
 
     const context: Record<string, unknown> = {};
-    const TASK_TIMEOUT_MS = 10 * 60 * 1000; // 10分钟全局超时
     const taskStartTime = Date.now();
 
     for (let i = 0; i < this.task.steps.length; i++) {
@@ -485,7 +485,7 @@ export class AgentExecutor {
     try {
       const executionSummary = this.task.steps
         .filter(s => s.status === 'done' && s.result)
-        .map(s => `[${s.description}]: ${s.result!.substring(0, 200)}`)
+        .map(s => `[${s.description}]: ${s.result?.substring(0, 200) ?? ''}`)
         .join('\n');
 
       const taskReflection = await this.decisionReflector.reflectOnTask(

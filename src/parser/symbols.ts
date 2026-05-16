@@ -75,6 +75,23 @@ interface SyntaxNode {
   child(index: number): SyntaxNode | null;
 }
 
+/**
+ * Type guard to validate that an object conforms to SyntaxNode interface.
+ * This provides runtime safety when accessing tree-sitter nodes.
+ */
+function isSyntaxNode(node: unknown): node is SyntaxNode {
+  if (node === null || typeof node !== 'object') return false;
+  const n = node as Record<string, unknown>;
+  return (
+    typeof n.type === 'string' &&
+    typeof n.text === 'string' &&
+    typeof n.childCount === 'number' &&
+    Array.isArray(n.children) &&
+    typeof n.childForFieldName === 'function' &&
+    typeof n.child === 'function'
+  );
+}
+
 /** TypeScript/JavaScript 节点类型到符号类型的映射 */
 const NODE_TYPE_MAP: Record<string, SymbolKind> = {
   'function_declaration': 'function',
@@ -111,7 +128,12 @@ const NODE_TYPE_MAP: Record<string, SymbolKind> = {
 export function extractSymbols(result: ParseResult): CodeSymbol[] {
   const symbols: CodeSymbol[] = [];
   const { tree, filePath } = result;
-  const rootNode = tree.rootNode as unknown as SyntaxNode;
+  
+  // Validate root node with type guard for runtime safety
+  const rootNode = tree.rootNode;
+  if (!isSyntaxNode(rootNode)) {
+    return symbols; // Return empty if root node is invalid
+  }
 
   walkTree(rootNode, symbols, filePath, undefined);
 

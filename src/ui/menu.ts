@@ -20,6 +20,26 @@ export interface GroupedMenuOptions {
   searchHint?: string;
 }
 
+/** Separator type for inquirer choices */
+interface SeparatorChoice {
+  type: 'separator';
+  line: string;
+}
+
+/** Normal choice type for inquirer */
+interface NormalChoice {
+  name: string;
+  value: string;
+  short: string;
+}
+
+type Choice = SeparatorChoice | NormalChoice;
+
+/** Create a separator choice safely */
+function createSeparator(text: string): SeparatorChoice {
+  return { type: 'separator', line: text };
+}
+
 export async function showGroupedMenu(
   groups: MenuGroup[],
   options: GroupedMenuOptions = {}
@@ -30,12 +50,12 @@ export async function showGroupedMenu(
     backLabel = '← 返回上级',
   } = options;
 
-  const choices: { name: string; value: string; short: string }[] = [];
+  const choices: Choice[] = [];
   let globalIndex = 0; // 全局连续编号
 
   groups.forEach(group => {
     if (group.title) {
-      choices.push(new inquirer.Separator(chalk.bold.yellow(`  ── ${group.title} ──`)) as unknown as { name: string; value: string; short: string });
+      choices.push(createSeparator(chalk.bold.yellow(`  ── ${group.title} ──`)));
     }
 
     group.items.forEach((item) => {
@@ -50,7 +70,7 @@ export async function showGroupedMenu(
       globalIndex++;
     });
 
-    choices.push(new inquirer.Separator('') as unknown as { name: string; value: string; short: string });
+    choices.push(createSeparator(''));
   });
 
   if (showBack) {
@@ -62,11 +82,12 @@ export async function showGroupedMenu(
   }
 
   try {
+    // inquirer accepts both Separator objects and normal choices
     const answers = await inquirer.prompt([{
       type: 'list',
       name: 'choice',
       message: chalk.bold.cyan(title),
-      choices,
+      choices: choices as Array<{ name: string; value: string; short?: string } | { type: 'separator' }>,
       pageSize: 20,
       loop: false,
     }]);

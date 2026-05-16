@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { MemoryInsight, ReflectionReport } from './reflection-rules.js';
 import { ReflectionEngine } from './reflection-rules.js';
+import { MAX_INSIGHTS_COUNT } from '../constants/index.js';
 
 // Re-export 类型
 export type { MemoryInsight, ReflectionReport };
@@ -94,10 +95,10 @@ export class MemoryReflector {
       }
     }
 
-    // 保留最近 100 条洞察
-    if (this.insights.length > 100) {
+    // 保留最近 MAX_INSIGHTS_COUNT 条洞察
+    if (this.insights.length > MAX_INSIGHTS_COUNT) {
       this.insights.sort((a, b) => b.createdAt - a.createdAt);
-      this.insights = this.insights.slice(0, 100);
+      this.insights = this.insights.slice(0, MAX_INSIGHTS_COUNT);
     }
 
     const report: ReflectionReport = {

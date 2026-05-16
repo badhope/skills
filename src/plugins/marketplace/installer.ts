@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { registryStore } from './registry.js';
 import type { RegistryEntry } from './registry.js';
+import { getErrorMessage } from '../../utils/error-handling.js';
 
 export interface InstallOptions {
   version?: string;
@@ -76,8 +77,8 @@ export class PluginInstaller {
       registryStore.incrementDownloads(name);
       await registryStore.save();
       return { name, version, installedPath: targetPath, success: true };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
       return { name, version, installedPath: targetPath, success: false, error: msg };
     }
   }

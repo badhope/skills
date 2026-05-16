@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { MCPDiscovery, type MCPServiceInfo } from './discovery.js';
 import { toolRegistry } from '../../tools/registry.js';
+import { getErrorMessage } from '../../utils/error-handling.js';
 
 // ============================================================
 // MCP Marketplace - Integration
@@ -72,8 +73,8 @@ export class MCPIntegration {
       this.integrated.set(serviceName, new Set(registeredNames));
       result.services.push(serviceName);
       result.toolsRegistered = registeredNames.length;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
       result.errors.push(`Failed to integrate "${serviceName}": ${msg}`);
     }
     return result;
@@ -147,8 +148,8 @@ export class MCPIntegration {
         try {
           const result = await rawExecute(args);
           return { success: true, output: typeof result === 'string' ? result : JSON.stringify(result) };
-        } catch (err) {
-          return { success: false, output: '', error: err instanceof Error ? err.message : String(err) };
+        } catch (error: unknown) {
+          return { success: false, output: '', error: getErrorMessage(error) };
         }
       },
     };

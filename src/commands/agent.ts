@@ -231,8 +231,12 @@ agentCommand
     const toolGroups = new Map<string, string[]>();
     for (const tool of tools) {
       const group = tool.category || 'other';
-      if (!toolGroups.has(group)) toolGroups.set(group, []);
-      toolGroups.get(group)!.push(tool.name);
+      const groupTools = toolGroups.get(group);
+      if (groupTools) {
+        groupTools.push(tool.name);
+      } else {
+        toolGroups.set(group, [tool.name]);
+      }
     }
     for (const [group, names] of toolGroups) {
       console.log(`  ${chalk.yellow(group)}: ${names.join(', ')}`);

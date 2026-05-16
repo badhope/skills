@@ -6,6 +6,11 @@ import * as path from 'path';
 // 基于 Ebbinghaus 遗忘曲线: retention = e^(-t/S)
 // ============================================================
 
+/** Get error message safely from unknown error */
+function getErrorMsg(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export interface ConsolidationConfig {
   enabled: boolean;
   decayFactor: number;              // 每天重要性衰减系数 (0-1, 默认 0.95)
@@ -190,8 +195,8 @@ export class MemoryConsolidator {
               lastAccessedAt: record.lastAccessedAt,
             });
           }
-        } catch (err) {
-          console.warn('[Consolidation] 文件搜索失败:', err);
+        } catch (error: unknown) {
+          console.warn('[Consolidation] 文件搜索失败:', getErrorMsg(error));
         }
       }
 
@@ -203,8 +208,8 @@ export class MemoryConsolidator {
       for (const memory of toRemove) {
         try {
           await fs.unlink(path.join(memoryDir, `${memory.id}.json`));
-        } catch (err) {
-          console.warn('[Consolidation] 模式计数失败:', err);
+        } catch (error: unknown) {
+          console.warn('[Consolidation] 模式计数失败:', getErrorMsg(error));
         }
       }
 
@@ -214,8 +219,8 @@ export class MemoryConsolidator {
         summariesCreated: 0,
         patternsExtracted: this.extractPatterns(memories).length,
       };
-    } catch (err) {
-      console.warn('[Consolidation] 大文件查找失败:', err);
+    } catch (error: unknown) {
+      console.warn('[Consolidation] 大文件查找失败:', getErrorMsg(error));
       return emptyResult;
     }
   }
