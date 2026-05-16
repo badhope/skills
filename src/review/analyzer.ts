@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { ReviewResult, ReviewOptions, ReviewIssue } from './types.js';
 import { calculateMetrics } from './metrics.js';
-import { ReviewRulesEngine, quickRuleCheck } from './rules.js';
+import { ReviewRulesEngine } from './rules.js';
 import { aiReview } from './ai-review.js';
 
 /**
@@ -32,11 +32,11 @@ export class CodeAnalyzer {
         eslintIssues = await this.rulesEngine.analyze(filePath);
       } catch {
         // ESLint 失败时回退到快速规则检测
-        eslintIssues = quickRuleCheck(content, filePath);
+        eslintIssues = ReviewRulesEngine.quickCheck(content, filePath);
       }
     } else {
       // 非 JS/TS 文件使用快速规则检测
-      eslintIssues = quickRuleCheck(content, filePath);
+      eslintIssues = ReviewRulesEngine.quickCheck(content, filePath);
     }
 
     // AI 深度审查（默认开启，useAi=false 时跳过）
@@ -162,27 +162,4 @@ export class CodeAnalyzer {
 export async function analyzeCode(filePath: string, options: ReviewOptions = {}): Promise<ReviewResult> {
   const analyzer = new CodeAnalyzer(process.cwd());
   return analyzer.analyzeFile(filePath, options);
-}
-
-/**
- * 审查单个文件（向后兼容别名）
- * @param filePath 文件路径
- * @param options 审查选项
- * @returns 审查结果
- * @deprecated 使用 CodeAnalyzer.analyzeFile 或 analyzeCode 替代
- */
-export async function reviewFile(filePath: string, options: ReviewOptions = {}): Promise<ReviewResult> {
-  return analyzeCode(filePath, options);
-}
-
-/**
- * 批量审查目录（向后兼容别名）
- * @param dirPath 目录路径
- * @param options 审查选项
- * @returns 审查结果列表
- * @deprecated 使用 CodeAnalyzer.analyzeDirectory 替代
- */
-export async function reviewDirectory(dirPath: string, options: ReviewOptions = {}): Promise<ReviewResult[]> {
-  const analyzer = new CodeAnalyzer(process.cwd());
-  return analyzer.analyzeDirectory(dirPath, options);
 }

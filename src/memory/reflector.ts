@@ -3,7 +3,7 @@ import { MemoryManager } from './manager.js';
 import fs from 'fs/promises';
 import path from 'path';
 import type { MemoryInsight, ReflectionReport } from './reflection-rules.js';
-import { generateInsights } from './reflection-rules.js';
+import { ReflectionEngine } from './reflection-rules.js';
 
 // Re-export 类型
 export type { MemoryInsight, ReflectionReport };
@@ -70,7 +70,8 @@ export class MemoryReflector {
       timestamp: new Date(r.timestamp).toLocaleString('zh-CN'),
     }));
 
-    const newInsights = generateInsights(memories);
+    const engine = new ReflectionEngine();
+    const newInsights = engine.reflectWithStats(memories);
 
     // 去重：与已有洞察比较，相似内容不重复添加
     for (const insight of newInsights) {

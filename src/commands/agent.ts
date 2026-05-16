@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { printHeader, printSection, printSuccess, printError, printInfo, printWarning } from '../ui/logo.js';
 import { printSteps, printKeyValue } from '../ui/display.js';
-import { runAgentTask, recognizeIntent, type TaskStep } from '../agent/core.js';
+import { runAgentTask, intentRecognizer, type TaskStep } from '../agent/core.js';
 import { runDualModel } from '../agent/dual-model.js';
 import { runPlanAct } from '../agent/plan-act.js';
 import { configManager } from '../config/manager.js';
@@ -107,7 +107,7 @@ agentCommand
       // === 标准单模型模式 ===
 
       // 意图识别
-      const intent = recognizeIntent(task);
+      const intent = intentRecognizer.recognizeSync(task);
       console.log(chalk.cyan(`  🎯 识别意图: ${chalk.bold(intent.intent)} (置信度: ${(intent.confidence * 100).toFixed(0)}%)`));
       if (intent.suggestedTools.length > 0) {
         console.log(chalk.gray(`  🛠️  建议工具: ${intent.suggestedTools.join(', ')}`));
@@ -162,7 +162,7 @@ agentCommand
   .description('测试意图识别')
   .argument('<description>', '任务描述')
   .action((description: string) => {
-    const result = recognizeIntent(description);
+    const result = intentRecognizer.recognizeSync(description);
 
     printHeader();
     printSection('>> 意图识别结果');
@@ -184,7 +184,7 @@ agentCommand
       printHeader();
       printSection('>> 任务规划');
 
-      const intent = recognizeIntent(task);
+      const intent = intentRecognizer.recognizeSync(task);
       console.log(chalk.cyan(`  >> 意图: ${chalk.bold(intent.intent)}\n`));
 
       const { planTask } = await import('../agent/core.js');
@@ -215,8 +215,8 @@ agentCommand
     printSection('>> Agent 系统状态');
 
     // 检查工具注册
-    const { listTools } = await import('../tools/registry.js');
-    const tools = listTools();
+    const { toolRegistry } = await import('../tools/registry.js');
+    const tools = toolRegistry.listTools();
 
     printKeyValue([
       { key: 'Agent 核心循环', value: '✓ 就绪', highlight: true },

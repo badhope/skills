@@ -12,7 +12,7 @@ import type { TaskStep } from './types.js';
 import type { PlanResult } from './plan-mode.js';
 import { reasonStep } from './reasoner.js';
 import { executeStep } from './step-executor.js';
-import { recognizeIntent } from './intent-recognizer.js';
+import { intentRecognizer } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { detectIssues, generateTrustReport, askUserConfirmation, TrustLevel } from './trust.js';
 import { ContextBuilder } from './context-builder.js';
@@ -130,7 +130,7 @@ export async function runActMode(
       output(chalk.dim('  ⚠ 上下文构建失败'));
     }
 
-    const { intent: recognizedIntent } = recognizeIntent(taskDescription);
+    const { intent: recognizedIntent } = intentRecognizer.recognizeSync(taskDescription);
     intent = recognizedIntent;
     steps = await planTask(taskDescription, intent);
     output(chalk.dim(`  规划完成: ${steps.length} 个步骤`));

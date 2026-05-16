@@ -541,16 +541,7 @@ export class GitManager {
   }
 
   /**
-   * 获取提交日志（兼容旧 API）
-   * @deprecated 请使用 getCommits()
-   */
-  async getLog(options?: { count?: number; author?: string; since?: string; file?: string }): Promise<GitCommit[]> {
-    return this.getCommits(options);
-  }
-
-  /**
-   * 执行原始 Git 命令（兼容旧 API）
-   * @deprecated 请使用具体的类型安全方法
+   * 执行原始 Git 命令
    */
   async exec(args: string[]): Promise<string> {
     gitLogger.debug({ args }, 'Executing raw git command');

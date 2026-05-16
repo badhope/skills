@@ -242,33 +242,3 @@ export class ReflectionEngine {
       .slice(0, 20);
   }
 }
-
-// ============================================================
-// 向后兼容的导出函数
-// ============================================================
-
-/**
- * 从一组记忆文本中提取高频主题（向后兼容函数）
- *
- * @param texts - 文本数组
- * @returns 主题及其出现次数
- * @deprecated 建议使用 ReflectionEngine 类以获得 LLM 支持
- */
-export function extractThemes(texts: string[]): Array<{ theme: string; count: number }> {
-  const engine = new ReflectionEngine();
-  return engine['extractThemes'](texts);
-}
-
-/**
- * 从记忆中生成洞察（向后兼容函数）
- *
- * @param memories - 记忆条目数组
- * @returns 洞察列表
- * @deprecated 建议使用 ReflectionEngine 类以获得 LLM 支持
- */
-export function generateInsights(
-  memories: Array<{ id: string; input: string; output: string; timestamp: string }>
-): MemoryInsight[] {
-  const engine = new ReflectionEngine();
-  return engine.reflectWithStats(memories);
-}

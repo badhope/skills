@@ -165,8 +165,7 @@ export class ErrorHandler {
   }
 
   private async findAlternativeTools(description: string): Promise<string[]> {
-    const { listTools } = await import('../tools/registry.js');
-    const tools = listTools();
+    const tools = toolRegistry.listTools();
     const keywords = description.toLowerCase().split(/\s+/);
 
     return tools

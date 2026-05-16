@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { executeTool, getToolDefinitions, toolRegistry } from '../../tools/registry.js';
+import { toolRegistry } from '../../tools/registry.js';
 import { printHeader, printSection, printSuccess, printError, printInfo } from '../../ui/logo.js';
 
 export const toolsExecCommand = new Command('exec')
@@ -15,7 +15,7 @@ toolsExecCommand
     printHeader();
     printSection('可用工具');
 
-    for (const [name, tool] of toolRegistry) {
+    for (const [name, tool] of toolRegistry.toolsMap) {
       console.log(`  ${chalk.bold.cyan(name)}`);
       console.log(`    ${chalk.gray(tool.description)}`);
       const params = tool.parameters.map(p =>
@@ -54,7 +54,7 @@ toolsExecCommand
     if (options.cwd) shellArgs.cwd = options.cwd;
     shellArgs.timeout = options.timeout;
 
-    const result = await executeTool('shell', shellArgs);
+    const result = await toolRegistry.execute('shell', shellArgs);
 
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -121,7 +121,7 @@ toolsExecCommand
       }
     }
 
-    const result = await executeTool(toolName, parsedArgs);
+    const result = await toolRegistry.execute(toolName, parsedArgs);
 
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -149,7 +149,7 @@ toolsExecCommand
   .command('schema')
   .description('导出工具定义为JSON格式')
   .action(() => {
-    const definitions = getToolDefinitions();
+    const definitions = toolRegistry.getToolDefinitions();
     console.log(JSON.stringify(definitions, null, 2));
   });
 
@@ -212,7 +212,7 @@ toolsExecCommand
         console.log(chalk.cyan(`  [${i + 1}/${steps.length}] ${toolName}`));
       }
 
-      const result = await executeTool(toolName, parsedArgs);
+      const result = await toolRegistry.execute(toolName, parsedArgs);
 
       if (!result.success) {
         printError(`步骤 ${i + 1} (${toolName}) 失败: ${result.error}`);

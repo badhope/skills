@@ -77,7 +77,7 @@ gitCommand
       return;
     }
 
-    const commits = await git.getLog({
+    const commits = await git.getCommits({
       count: parseInt(options.count),
       author: options.ai ? '(devflow)' : undefined,
     });
@@ -163,7 +163,7 @@ gitCommand
     }
 
     // 获取最后一次提交
-    const commits = await git.getLog({ count: 1 });
+    const commits = await git.getCommits({ count: 1 });
     if (commits.length === 0) {
       printError('没有提交记录');
       return;

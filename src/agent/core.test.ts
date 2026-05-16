@@ -17,8 +17,10 @@ vi.mock('../tools/registry.js', () => ({
   toolRegistry: {
     has: vi.fn((name: string) => ['read_file', 'write_file', 'run_command', 'search', 'test'].includes(name)),
     keys: vi.fn(() => ['read_file', 'write_file', 'run_command', 'search', 'test']),
+    toolsMap: {
+      keys: vi.fn(() => ['read_file', 'write_file', 'run_command', 'search', 'test']),
+    },
   },
-  executeTool: vi.fn(() => Promise.resolve('tool result')),
 }));
 
 // Mock all external dependencies for AgentExecutor
@@ -27,8 +29,10 @@ vi.mock('./tools/registry.js', () => ({
     has: vi.fn(() => true),
     keys: vi.fn(() => ['read_file', 'write_file', 'run_command']),
     get: vi.fn(),
+    toolsMap: {
+      keys: vi.fn(() => ['read_file', 'write_file', 'run_command']),
+    },
   },
-  executeTool: vi.fn(() => Promise.resolve('tool result')),
 }));
 
 vi.mock('./memory/manager.js', () => ({
@@ -143,7 +147,9 @@ vi.mock('./config/project-config.js', () => ({
 }));
 
 vi.mock('./intent-recognizer.js', () => ({
-  recognizeIntent: vi.fn(() => ({ intent: 'general', confidence: 0.5 })),
+  intentRecognizer: {
+    recognizeSync: vi.fn(() => ({ intent: 'general', confidence: 0.5 })),
+  },
 }));
 
 vi.mock('./task-planner.js', () => ({

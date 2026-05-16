@@ -16,6 +16,9 @@ import type {
 } from './types.js';
 import { eventBus } from './event-bus.js';
 import { pluginRegistry } from './registry.js';
+import { createLogger } from '../services/logger.js';
+
+const pluginLoaderLogger = createLogger('PluginLoader');
 
 /** Options for plugin discovery */
 export interface PluginLoaderOptions {
@@ -226,7 +229,7 @@ export class PluginLoader {
         await this.activate(manifest.name, context);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[PluginLoader] Failed to load/activate "${manifest.name}": ${msg}`);
+        pluginLoaderLogger.error({ plugin: manifest.name, error: msg }, 'Failed to load/activate plugin');
       }
     }
   }

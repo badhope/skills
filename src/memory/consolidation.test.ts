@@ -162,7 +162,7 @@ describe('MemoryConsolidator', () => {
         createMemory({ id: `${prefix}-b2`, importance: 0.2 }),
       ];
 
-      const result = await consolidator.consolidate(memories, mockManager as any);
+      const result = await consolidator.consolidate(memories, mockManager as { removeMemory: (id: string) => Promise<void>; addSummary: (summary: string, sourceIds: string[]) => Promise<void> });
 
       expect(result.memoriesConsolidated).toBe(2);
       expect(result.memoriesRemoved).toBe(2);
@@ -183,7 +183,7 @@ describe('MemoryConsolidator', () => {
         createMemory({ id: 'high2', importance: 0.9 }),
       ];
 
-      const result = await consolidator.consolidate(memories, mockManager as any);
+      const result = await consolidator.consolidate(memories, mockManager as { removeMemory: (id: string) => Promise<void>; addSummary: (summary: string, sourceIds: string[]) => Promise<void> });
       expect(result.memoriesConsolidated).toBe(0);
     });
   });

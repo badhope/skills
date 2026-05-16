@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { configManager } from '../../config/manager.js';
 import { memoryManager } from '../../memory/manager.js';
-import { listTools, toolRegistry } from '../../tools/registry.js';
+import { toolRegistry } from '../../tools/registry.js';
 import { PROVIDER_INFO, PROVIDER_TYPE_LIST, type ProviderType } from '../../types.js';
 import { waitForEnter as pause } from '../../utils/io.js';
 import { getErrorMessage } from '../../utils/error-handling.js';
@@ -223,7 +223,7 @@ export async function handleMenuChoice(choice: string): Promise<void> {
 
     case 'tools-run': {
       try {
-        const tools = listTools();
+        const tools = toolRegistry.listTools();
         const { toolName } = await inquirer.prompt([{
           type: 'list',
           name: 'toolName',

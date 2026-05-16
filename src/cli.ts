@@ -81,7 +81,7 @@ const cleanup = async () => {
     
     console.log('✓ 状态保存完成');
   } catch (err) {
-    console.error('保存状态时出错:', err);
+    logger.error({ error: err }, 'Error saving state');
   }
 };
 

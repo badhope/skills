@@ -71,7 +71,7 @@ memoryConfigCommand
         name: 'autoRecall',
         message: '自动召回记忆（对话时注入相关记忆上下文）:',
         default: current.autoRecall,
-        when: (a: any) => a.enabled,
+        when: (a: { enabled: boolean }) => a.enabled,
       },
       {
         type: 'confirm',

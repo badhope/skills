@@ -1,5 +1,5 @@
 import type { TaskStep } from './types.js';
-import { executeTool } from '../tools/registry.js';
+import { toolRegistry } from '../tools/registry.js';
 
 /**
  * 步骤执行器
@@ -18,9 +18,8 @@ export async function executeStep(step: TaskStep, context: Record<string, unknow
   }
 
   // === 防止幻觉工具调用：验证工具存在 ===
-  const { toolRegistry } = await import('../tools/registry.js');
   if (!toolRegistry.has(step.tool)) {
-    throw new Error(`工具 "${step.tool}" 不存在。可用工具: ${[...toolRegistry.keys()].join(', ')}`);
+    throw new Error(`工具 "${step.tool}" 不存在。可用工具: ${[...toolRegistry.toolsMap.keys()].join(', ')}`);
   }
 
   // === 防止范围蔓延：步骤数量上限检查 ===
@@ -42,7 +41,7 @@ export async function executeStep(step: TaskStep, context: Record<string, unknow
         args[key] = String(value ?? '');
       }
     }
-    const result = await executeTool(step.tool, args);
+    const result = await toolRegistry.execute(step.tool, args);
     if (typeof result === 'string') return result;
     // 处理 ToolResult 对象
     if (result && typeof result === 'object' && 'output' in result) {

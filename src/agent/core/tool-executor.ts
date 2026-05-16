@@ -5,7 +5,7 @@
  * Extracted from core.ts for better modularity.
  */
 
-import { toolRegistry, executeTool } from '../../tools/registry.js';
+import { toolRegistry } from '../../tools/registry.js';
 import { agentLogger } from '../../services/logger.js';
 import { reasonStep } from '../reasoner.js';
 import { parseToolArgsFromAI } from '../agent-utils.js';
@@ -61,7 +61,7 @@ export async function executeToolStep(
 
   // 验证工具存在（防止幻觉工具调用）
   if (!toolRegistry.has(step.tool)) {
-    const availableTools = [...toolRegistry.keys()].join(', ');
+    const availableTools = [...toolRegistry.toolsMap.keys()].join(', ');
     const error = `工具 "${step.tool}" 不存在。可用工具: ${availableTools}`;
     return {
       success: false,
@@ -86,7 +86,7 @@ export async function executeToolStep(
 
   try {
     // 记录决策
-    const availableToolsList = [...toolRegistry.keys()];
+    const availableToolsList = [...toolRegistry.toolsMap.keys()];
     const reasoning = `步骤 "${step.description}" 需要使用工具 "${step.tool}" 来完成`;
 
     const newDecisionId = await decisionReflector.recordDecision(
@@ -205,7 +205,7 @@ async function executeToolWithArgs(
       }
     }
 
-    const result = await executeTool(toolName, stringArgs);
+    const result = await toolRegistry.execute(toolName, stringArgs);
 
     // 处理字符串结果
     if (typeof result === 'string') {
@@ -266,7 +266,7 @@ export async function executeReasoningStep(
       intent: intent || 'chat',
       stepDescription: step.description,
       previousResults: await getContext(),
-      availableTools: [...toolRegistry.keys()],
+      availableTools: [...toolRegistry.toolsMap.keys()],
     });
     const duration = Date.now() - startTime;
 

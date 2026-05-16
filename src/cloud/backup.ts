@@ -11,6 +11,9 @@ import { SYNC_SCHEMA_VERSION } from './types.js';
 import { configManager } from '../config/manager.js';
 import { memoryManager } from '../memory/manager.js';
 import { MEMORY_DIR } from '../utils/index.js';
+import { createLogger } from '../services/logger.js';
+
+const backupLogger = createLogger('Backup');
 
 function stripSecrets(config: Record<string, any>): Record<string, any> {
   const sanitized = { ...config };
@@ -78,7 +81,7 @@ export class BackupManager {
               const cfg = providerConfig as Record<string, any>;
               // 跳过已脱敏的 apiKey
               if (cfg.apiKey === '***REDACTED***') {
-                console.log(`[Backup] 跳过 ${name} API Key 恢复（已脱敏，需手动配置）`);
+                backupLogger.info({ provider: name }, 'Skipping API Key restore (redacted, manual config required)');
                 delete cfg.apiKey;
               }
               // 恢复 baseUrl, defaultModel 等配置
@@ -94,7 +97,7 @@ export class BackupManager {
           }
         }
 
-        console.log('[Backup] 配置已恢复');
+        backupLogger.info('Configuration restored');
       }
 
       // 恢复记忆数据
@@ -110,12 +113,12 @@ export class BackupManager {
             }
           } catch { /* skip individual record errors */ }
         }
-        console.log(`[Backup] 已恢复 ${restoredCount} 条记忆记录`);
+        backupLogger.info({ count: restoredCount }, 'Memory records restored');
       }
 
       return true;
     } catch (error) {
-      console.error('[Backup] Restore failed:', error);
+      backupLogger.error({ error }, 'Restore failed');
       return false;
     }
   }
@@ -160,7 +163,7 @@ export class BackupManager {
       await this.cleanup();
       return entry;
     } catch (error) {
-      console.error('[Backup] Auto backup failed:', error);
+      backupLogger.error({ error }, 'Auto backup failed');
       return null;
     }
   }

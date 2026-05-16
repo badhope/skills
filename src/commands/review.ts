@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { reviewFile, reviewDirectory } from '../review/analyzer.js';
+import { analyzeCode, CodeAnalyzer } from '../review/analyzer.js';
 import { printHeader, printSection, printSuccess, printError, printInfo, printWarning, createSpinner } from '../ui/logo.js';
 
 const reviewCommand = new Command('review')
@@ -24,7 +24,7 @@ reviewCommand
     const spinner = createSpinner('正在审查代码...');
 
     try {
-      const result = await reviewFile(filePath, { categories, useAi: options.ai });
+      const result = await analyzeCode(filePath, { categories, useAi: options.ai });
 
       if (spinner) spinner.stop();
       printReviewResult(result);
@@ -53,7 +53,8 @@ reviewCommand
     const spinner = createSpinner('正在扫描目录...');
 
     try {
-      const results = await reviewDirectory(dirPath, { categories, ignorePatterns, useAi: options.ai });
+      const analyzer = new CodeAnalyzer();
+      const results = await analyzer.analyzeDirectory(dirPath, { categories, ignorePatterns, useAi: options.ai });
 
       if (spinner) spinner.stop();
 

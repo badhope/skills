@@ -133,7 +133,7 @@ const undoCommand: SlashCommand = {
       if (!(await git.isRepo())) {
         return { handled: true, message: chalk.yellow('当前目录不是 Git 仓库') };
       }
-      const commits = await git.getLog({ count: 1 });
+      const commits = await git.getCommits({ count: 1 });
       if (commits.length === 0) {
         return { handled: true, message: chalk.yellow('没有提交记录') };
       }
@@ -389,7 +389,7 @@ const historyCommand: SlashCommand = {
         return { handled: true, message: chalk.dim('没有历史记录') };
       }
       let output = chalk.bold('\n📜 最近对话:\n');
-      recent.forEach((s: any, i: number) => {
+      recent.forEach((s: { title?: string; messageCount?: number }, i: number) => {
         output += `  ${chalk.dim(`${i + 1}.`)} ${chalk.cyan(s.title || '无标题')} ${chalk.dim(`(${s.messageCount || 0}条消息)`)}\n`;
       });
       return { handled: true, message: output };

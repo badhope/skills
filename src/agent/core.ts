@@ -25,7 +25,7 @@ import { ExperienceStore, type Experience } from './experience-store.js';
 import { PersonalityManager } from './personality.js';
 import { EmotionalStateManager } from './emotional-state.js';
 import { projectConfigLoader } from '../config/project-config.js';
-import { recognizeIntent } from './intent-recognizer.js';
+import { intentRecognizer } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { generateSummary, parseToolArgsFromAI } from './agent-utils.js';
 import chalk from 'chalk';
@@ -50,8 +50,8 @@ import { executeToolStep, executeReasoningStep } from './core/tool-executor.js';
 // Re-export 类型（向后兼容）
 export type { TaskStep, Task } from './types.js';
 
-// Re-export 提取的函数（向后兼容）
-export { recognizeIntent } from './intent-recognizer.js';
+// Re-export 意图识别器（向后兼容）
+export { intentRecognizer } from './intent-recognizer.js';
 export { planTask } from './task-planner.js';
 export { executeStep } from './step-executor.js';
 
@@ -233,7 +233,7 @@ export class AgentExecutor {
     this.output(chalk.dim('[1/5] 理解任务...'));
     agentLogger.debug({ taskId: this.task.id }, 'Phase 1: Understanding task');
 
-    const { intent } = recognizeIntent(this.task.userInput);
+    const { intent } = intentRecognizer.recognizeSync(this.task.userInput);
     this.task.intent = intent;
     agentLogger.debug({ taskId: this.task.id, intent }, 'Intent recognized');
 

@@ -11,7 +11,7 @@ import chalk from 'chalk';
 import type { Message } from '../types.js';
 import { callLLM } from './llm-caller.js';
 import type { ReasonerConfig } from './llm-caller.js';
-import { recognizeIntent } from './intent-recognizer.js';
+import { intentRecognizer } from './intent-recognizer.js';
 import { planTask } from './task-planner.js';
 import { reasonStep } from './reasoner.js';
 import { executeStep } from './step-executor.js';
@@ -135,7 +135,7 @@ export async function runPlanMode(
   const projectRoot = rootDir || process.cwd();
 
   // 1. 意图识别
-  const { intent } = recognizeIntent(taskDescription);
+  const { intent } = intentRecognizer.recognizeSync(taskDescription);
   output(chalk.cyan(`🎯 意图: ${intent}`));
 
   // 1.5 构建上下文（Repo Map + Knowledge Graph + Code Index）

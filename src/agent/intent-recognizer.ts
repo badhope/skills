@@ -196,37 +196,17 @@ export class IntentRecognizer {
 
     return this.llmClassifier(input);
   }
-}
 
-/**
- * 识别用户输入的意图（同步便捷函数，向后兼容）
- *
- * @param input - 用户输入文本
- * @returns 意图识别结果
- * @deprecated 建议使用 IntentRecognizer 类以获得 LLM 支持
- */
-export function recognizeIntent(input: string): IntentResult {
-  const recognizer = new IntentRecognizer();
-  // 同步调用：仅使用正则结果
-  const lower = input.toLowerCase();
-
-  for (const rule of REGEX_RULES) {
-    if (rule.pattern.test(lower)) {
-      if (rule.intent === 'fullstack') {
-        const techStackPattern =
-          /(?:react|vue|angular|nextjs|nuxt|html|css|js|typescript|node|python|rust|go)/;
-        const fileExtPattern = /(?:\.py|\.ts|\.js|\.tsx|\.jsx|\.html|\.css|\.json|\.yaml|\.yml|\.md)/;
-        if (!techStackPattern.test(lower) && !fileExtPattern.test(lower)) {
-          continue;
-        }
-      }
-      return {
-        intent: rule.intent,
-        confidence: rule.confidence,
-        suggestedTools: rule.suggestedTools,
-      };
-    }
+  /**
+   * 同步识别用户输入的意图（仅使用正则规则，不调用 LLM）
+   *
+   * @param input - 用户输入文本
+   * @returns 意图识别结果
+   */
+  recognizeSync(input: string): IntentResult {
+    return this.classifyWithRegex(input);
   }
-
-  return { intent: 'chat', confidence: 0.5, suggestedTools: [] };
 }
+
+/** 全局意图识别器单例 */
+export const intentRecognizer = new IntentRecognizer();

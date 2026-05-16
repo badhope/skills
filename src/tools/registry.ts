@@ -97,6 +97,13 @@ export class ToolRegistry {
   }
 
   /**
+   * 获取内部工具 Map（向后兼容）
+   */
+  get toolsMap(): Map<string, ToolDefinition> {
+    return this.tools;
+  }
+
+  /**
    * 列出所有工具
    */
   listAll(): ToolDefinition[] {
@@ -186,66 +193,8 @@ export class ToolRegistry {
 }
 
 // ============================================================
-// 向后兼容的函数导出
+// 全局单例
 // ============================================================
 
-// 全局工具注册表实例
-const globalToolRegistry = new ToolRegistry();
-
-/**
- * @deprecated 使用 ToolRegistry 类实例方法
- */
-export const toolRegistry: Map<string, ToolDefinition> = new Map([
-  // Shell
-  ['shell', shellTool],
-  // 文件操作
-  ['read_file', readFileTool],
-  ['write_file', writeFileTool],
-  ['search_files', searchFilesTool],
-  ['list_dir', listDirTool],
-  ['file_tree', fileTreeTool],
-  ['file_info', fileInfoTool],
-  ['delete_file', deleteFileTool],
-  // 实用工具
-  ['sysinfo', sysInfoTool],
-  ['http', httpTool],
-  ['json', jsonTool],
-  ['text', textTool],
-  ['hash', hashTool],
-]);
-
-/**
- * @deprecated 使用 ToolRegistry.getToolDefinitions()
- */
-export function getToolDefinitions(): Array<{
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, { type: string; description: string }>;
-      required: string[];
-    };
-  };
-}> {
-  return globalToolRegistry.getToolDefinitions();
-}
-
-/**
- * @deprecated 使用 ToolRegistry.execute()
- */
-export async function executeTool(name: string, args: Record<string, string>): Promise<ToolResult> {
-  return globalToolRegistry.execute(name, args);
-}
-
-/**
- * @deprecated 使用 ToolRegistry.listTools()
- */
-export function listTools(): Array<{
-  name: string;
-  description: string;
-  category: string;
-}> {
-  return globalToolRegistry.listTools();
-}
+/** 全局工具注册表单例 */
+export const toolRegistry = new ToolRegistry();

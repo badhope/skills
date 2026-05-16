@@ -258,13 +258,3 @@ export function calculateMetrics(content: string, filePath?: string): CodeMetric
     maxDepth,
   };
 }
-
-/**
- * 分析代码指标（向后兼容别名）
- * @param content 代码内容
- * @returns 代码指标统计
- * @deprecated 使用 calculateMetrics 替代
- */
-export function analyzeMetrics(content: string): ReturnType<typeof calculateMetrics> {
-  return calculateMetrics(content);
-}

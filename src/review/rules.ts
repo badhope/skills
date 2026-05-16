@@ -262,109 +262,108 @@ export class ReviewRulesEngine {
     this.disabledRules.add(ruleId);
     this.enabledRules.delete(ruleId);
   }
-}
 
-/**
- * 快速规则检测（向后兼容，保留原有安全规则检测）
- * @param content 代码内容
- * @param filePath 文件路径
- * @returns 检测到的问题列表
- * @deprecated 使用 ReviewRulesEngine 替代
- */
-export function quickRuleCheck(content: string, filePath: string): ReviewIssue[] {
-  const issues: ReviewIssue[] = [];
-  const lines = content.split('\n');
-  const ext = path.extname(filePath).toLowerCase();
+  /**
+   * 快速规则检测（基于正则，无需 ESLint 初始化）
+   * @param content 代码内容
+   * @param filePath 文件路径
+   * @returns 检测到的问题列表
+   */
+  static quickCheck(content: string, filePath: string): ReviewIssue[] {
+    const issues: ReviewIssue[] = [];
+    const lines = content.split('\n');
+    const ext = path.extname(filePath).toLowerCase();
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNum = i + 1;
 
-    // === 安全审计 ===
-    if (/password\s*[:=]\s*['"][^'"]{3,}/i.test(line) || /api[_-]?key\s*[:=]\s*['"][^'"]{3,}/i.test(line)) {
-      issues.push({
-        ruleId: 'SEC001',
-        message: '检测到硬编码的敏感信息（密码或API密钥）',
-        severity: 'error',
-        category: 'security',
-        line: lineNum,
-        suggestion: '使用环境变量或配置管理工具存储敏感信息',
-        code: line.trim(),
-      });
+      // === 安全审计 ===
+      if (/password\s*[:=]\s*['"][^'"]{3,}/i.test(line) || /api[_-]?key\s*[:=]\s*['"][^'"]{3,}/i.test(line)) {
+        issues.push({
+          ruleId: 'SEC001',
+          message: '检测到硬编码的敏感信息（密码或API密钥）',
+          severity: 'error',
+          category: 'security',
+          line: lineNum,
+          suggestion: '使用环境变量或配置管理工具存储敏感信息',
+          code: line.trim(),
+        });
+      }
+
+      if (/\+\s*['"`].*SELECT|INSERT|UPDATE|DELETE|DROP/i.test(line) && !/prepared|parameterized|escape/i.test(line)) {
+        issues.push({
+          ruleId: 'SEC002',
+          message: '潜在的SQL注入风险：字符串拼接SQL语句',
+          severity: 'error',
+          category: 'security',
+          line: lineNum,
+          suggestion: '使用参数化查询或ORM',
+          code: line.trim(),
+        });
+      }
+
+      if (/\.innerHTML\s*=/.test(line)) {
+        issues.push({
+          ruleId: 'SEC004',
+          message: '使用innerHTML可能导致XSS攻击',
+          severity: 'warning',
+          category: 'security',
+          line: lineNum,
+          suggestion: '使用textContent或DOMPurify进行清理',
+          code: line.trim(),
+        });
+      }
+
+      // === Bug检测 ===
+      if ((ext === '.js' || ext === '.ts' || ext === '.jsx' || ext === '.tsx') && /[^=!]==[^=]/.test(line) && !/===/.test(line)) {
+        issues.push({
+          ruleId: 'BUG001',
+          message: '使用==可能导致类型转换问题，建议使用===',
+          severity: 'warning',
+          category: 'bugs',
+          line: lineNum,
+          suggestion: '使用===进行严格比较',
+          code: line.trim(),
+        });
+      }
+
+      if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line)) {
+        issues.push({
+          ruleId: 'BUG002',
+          message: '空的catch块会吞掉错误',
+          severity: 'warning',
+          category: 'bugs',
+          line: lineNum,
+          suggestion: '至少记录错误日志',
+          code: line.trim(),
+        });
+      }
+
+      // === 代码质量 ===
+      if (line.length > 150) {
+        issues.push({
+          ruleId: 'QUAL001',
+          message: `行过长 (${line.length} 字符)，建议不超过120字符`,
+          severity: 'info',
+          category: 'quality',
+          line: lineNum,
+          suggestion: '拆分为多行',
+        });
+      }
+
+      if (/\/\/\s*(TODO|FIXME|HACK|XXX)/i.test(line) || /#\s*(TODO|FIXME|HACK|XXX)/i.test(line)) {
+        issues.push({
+          ruleId: 'QUAL002',
+          message: '代码中包含TODO/FIXME标记',
+          severity: 'info',
+          category: 'quality',
+          line: lineNum,
+          code: line.trim(),
+        });
+      }
     }
 
-    if (/\+\s*['"`].*SELECT|INSERT|UPDATE|DELETE|DROP/i.test(line) && !/prepared|parameterized|escape/i.test(line)) {
-      issues.push({
-        ruleId: 'SEC002',
-        message: '潜在的SQL注入风险：字符串拼接SQL语句',
-        severity: 'error',
-        category: 'security',
-        line: lineNum,
-        suggestion: '使用参数化查询或ORM',
-        code: line.trim(),
-      });
-    }
-
-    if (/\.innerHTML\s*=/.test(line)) {
-      issues.push({
-        ruleId: 'SEC004',
-        message: '使用innerHTML可能导致XSS攻击',
-        severity: 'warning',
-        category: 'security',
-        line: lineNum,
-        suggestion: '使用textContent或DOMPurify进行清理',
-        code: line.trim(),
-      });
-    }
-
-    // === Bug检测 ===
-    if ((ext === '.js' || ext === '.ts' || ext === '.jsx' || ext === '.tsx') && /[^=!]==[^=]/.test(line) && !/===/.test(line)) {
-      issues.push({
-        ruleId: 'BUG001',
-        message: '使用==可能导致类型转换问题，建议使用===',
-        severity: 'warning',
-        category: 'bugs',
-        line: lineNum,
-        suggestion: '使用===进行严格比较',
-        code: line.trim(),
-      });
-    }
-
-    if (/catch\s*\([^)]*\)\s*\{\s*\}/.test(line)) {
-      issues.push({
-        ruleId: 'BUG002',
-        message: '空的catch块会吞掉错误',
-        severity: 'warning',
-        category: 'bugs',
-        line: lineNum,
-        suggestion: '至少记录错误日志',
-        code: line.trim(),
-      });
-    }
-
-    // === 代码质量 ===
-    if (line.length > 150) {
-      issues.push({
-        ruleId: 'QUAL001',
-        message: `行过长 (${line.length} 字符)，建议不超过120字符`,
-        severity: 'info',
-        category: 'quality',
-        line: lineNum,
-        suggestion: '拆分为多行',
-      });
-    }
-
-    if (/\/\/\s*(TODO|FIXME|HACK|XXX)/i.test(line) || /#\s*(TODO|FIXME|HACK|XXX)/i.test(line)) {
-      issues.push({
-        ruleId: 'QUAL002',
-        message: '代码中包含TODO/FIXME标记',
-        severity: 'info',
-        category: 'quality',
-        line: lineNum,
-        code: line.trim(),
-      });
-    }
+    return issues;
   }
-
-  return issues;
 }
