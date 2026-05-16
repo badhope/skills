@@ -188,8 +188,9 @@ export class AgentExecutor {
     try {
       await this.personalityManager.load();
       this.personalityManager.incrementInteractions();
-    } catch {
-      // 人格加载失败不影响主流程
+    } catch (error) {
+      agentLogger.debug({ error: error instanceof Error ? error.message : String(error) },
+        'Personality loading failed (non-critical)');
     }
 
     // 情绪衰减
@@ -224,8 +225,9 @@ export class AgentExecutor {
       const checkpoint = new CheckpointManager(this.rootDir);
       await checkpoint.create(`执行前自动检查点: ${this.task.userInput.substring(0, 50)}`);
       agentLogger.debug({ taskId: this.task.id }, 'Git checkpoint created');
-    } catch {
-      agentLogger.debug({ taskId: this.task.id }, 'Git checkpoint skipped (not a git repo)');
+    } catch (error) {
+      agentLogger.debug({ taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+        'Git checkpoint skipped (not a git repo)');
     }
   }
 
@@ -623,8 +625,9 @@ export class AgentExecutor {
         if (result.success) {
           this.output(chalk.dim(`  📝 ${result.message}`));
         }
-      } catch {
-        // Git 操作失败不影响任务结果
+      } catch (error) {
+        agentLogger.debug({ taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+          'Git auto-commit failed (non-critical)');
       }
     }
 
@@ -656,7 +659,10 @@ export class AgentExecutor {
     this.emotionalState.onTaskFailure(this.task.result || '未知错误');
 
     // 即使失败也保存已记录的决策
-    this.decisionReflector.save().catch(() => {});
+    this.decisionReflector.save().catch((error) => {
+      agentLogger.warn({ taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+        'Failed to save decisions');
+    });
 
     return this.task;
   }
@@ -699,7 +705,7 @@ export class AgentExecutor {
       if (Array.isArray(m.content)) {
         return m.content.map(c => {
           if (typeof c === 'string') return c;
-          if (typeof c === 'object' && c !== null && 'text' in c) {
+          if (typeof c === 'object' && c !== null && 'text' in c && typeof (c as { text: unknown }).text === 'string') {
             return (c as { text: string }).text;
           }
           return '';
@@ -733,8 +739,9 @@ export class AgentExecutor {
       if (projectInstructions) {
         parts.push(projectInstructions);
       }
-    } catch {
-      // 项目配置加载失败不影响主流程
+    } catch (error) {
+      agentLogger.debug({ error: error instanceof Error ? error.message : String(error) },
+        'Project config loading failed (non-critical)');
     }
 
     if (this.builtContext) {
@@ -762,7 +769,9 @@ export class AgentExecutor {
         default: false,
       }]);
       return result;
-    } catch {
+    } catch (error) {
+      agentLogger.debug({ error: error instanceof Error ? error.message : String(error) },
+        'Failed to load inquirer module');
       this.output(chalk.yellow('  无法加载交互模块，默认中止任务'));
       return false;
     }
@@ -788,8 +797,9 @@ export class AgentExecutor {
         const records = await memoryManager.loadAllRecords();
         const recentRecords = records.slice(0, 5);
         await this.knowledgeGraph.extractFromMemory(recentRecords);
-      } catch {
-        // Knowledge graph extraction is optional
+      } catch (error) {
+        agentLogger.debug({ taskId: this.task.id, error: error instanceof Error ? error.message : String(error) },
+          'Knowledge graph extraction failed (optional)');
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);

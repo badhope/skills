@@ -107,7 +107,7 @@ export class DecisionReflector {
   async recordDecision(
     taskId: string,
     description: string,
-    context: Record<string, any>,
+    context: Record<string, unknown>,
     alternatives: Alternative[],
     chosenAlternativeId: string,
     rationale: string,
@@ -368,6 +368,17 @@ export class DecisionReflector {
     this.reflections.clear();
     this.taskDecisions.clear();
     this.debouncedSave();
+  }
+
+  /**
+   * 清理定时器，防止内存泄漏
+   * 在不再使用 DecisionReflector 实例时调用
+   */
+  dispose(): void {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
   }
 }
 

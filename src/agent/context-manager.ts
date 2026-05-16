@@ -1,4 +1,7 @@
 import type { Message } from '../types.js';
+import { createLogger } from '../services/logger.js';
+
+const contextLogger = createLogger('context-manager');
 
 export interface ContextMessage {
   role: 'system' | 'user' | 'assistant';
@@ -186,8 +189,9 @@ ${toCompress.map(m => `[${m.role}]: ${m.content}`).join('\n')}
 
         return true;
       }
-    } catch {
-      // 压缩失败，回退到简单丢弃
+    } catch (error) {
+      contextLogger.debug({ error: error instanceof Error ? error.message : String(error) },
+        'Compression failed, falling back to simple truncation');
     }
 
     return false;
@@ -204,7 +208,9 @@ ${toCompress.map(m => `[${m.role}]: ${m.content}`).join('\n')}
         }
         // 压缩成功后重置标记，允许后续再次压缩
         this.compressionAttempted = false;
-      } catch {
+      } catch (error) {
+        contextLogger.debug({ error: error instanceof Error ? error.message : String(error) },
+          'Window limit enforcement failed, falling back to drop');
         this.dropOldMessages();
         this.compressionAttempted = false;
       }
