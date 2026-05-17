@@ -4,10 +4,24 @@
  */
 
 // Type exports
-export * from './types.js';
+export type {
+  SyncConfig,
+  SyncData,
+  SyncResult,
+  DeviceInfo,
+  ConflictData,
+  ConflictStrategy,
+} from './types.js';
+export { SYNC_SCHEMA_VERSION, DEFAULT_SYNC_CONFIG } from './types.js';
 
 // Provider exports
-export * from './provider.js';
+export {
+  LocalSyncProvider,
+  GistSyncProvider,
+  CustomSyncProvider,
+  createSyncProvider,
+} from './provider.js';
+export type { SyncProvider } from './provider.js';
 
 // Manager exports
 export { SyncManager, syncManager } from './sync-manager.js';

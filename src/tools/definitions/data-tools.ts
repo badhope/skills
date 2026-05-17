@@ -210,7 +210,9 @@ export const jsonTool: ToolDefinition = {
             }
             jsonStr = await fs.readFile(safePath, 'utf-8');
           }
-        } catch { /* 不是有效文件路径，当作字符串 */ }
+        } catch (error) {
+        // Not a valid file path, treat as string
+      }
       }
 
       const obj = JSON.parse(jsonStr);

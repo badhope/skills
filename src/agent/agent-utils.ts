@@ -25,7 +25,9 @@ export function parseToolArgsFromAI(toolName: string, aiResponse: string): Recor
         result[key] = value;
       }
       return result;
-    } catch { /* fall through */ }
+    } catch (error) {
+      // Fall through to fallback parsing
+    }
   }
   const tool = toolRegistry.get(toolName);
   if (tool) {

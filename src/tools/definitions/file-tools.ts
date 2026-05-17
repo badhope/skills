@@ -134,7 +134,9 @@ export const searchFilesTool: ToolDefinition = {
             }
             regex.lastIndex = 0;
           }
-        } catch { /* skip */ }
+        } catch (error) {
+          // Skip files that cannot be read
+        }
         // 结果过多时提前终止
         if (results.length >= MAX_RESULTS) break;
       }

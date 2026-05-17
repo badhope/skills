@@ -111,7 +111,9 @@ export class BackupManager {
               await fs.writeFile(filePath, JSON.stringify(record, null, 2));
               restoredCount++;
             }
-          } catch { /* skip individual record errors */ }
+          } catch (error) {
+            // Skip individual record errors
+          }
         }
         backupLogger.info({ count: restoredCount }, 'Memory records restored');
       }
@@ -137,7 +139,9 @@ export class BackupManager {
       const filtered = index.filter(e => e.id !== backupId);
       await fs.writeFile(this.indexFile, JSON.stringify(filtered, null, 2));
       return true;
-    } catch { return false; }
+    } catch (error) {
+      return false;
+    }
   }
 
   async getBackupData(backupId: string): Promise<SyncData> {
@@ -188,7 +192,9 @@ export class BackupManager {
     try {
       const content = await fs.readFile(this.indexFile, 'utf-8');
       return JSON.parse(content) as BackupEntry[];
-    } catch { return []; }
+    } catch (error) {
+      return [];
+    }
   }
 
   private async updateIndex(entry: BackupEntry): Promise<void> {
@@ -205,7 +211,9 @@ export class BackupManager {
       await memoryManager.init();
       const records = await memoryManager.loadAllRecords();
       memory = { conversations: records, knowledge: [] };
-    } catch { memory = undefined; }
+    } catch (error) {
+      memory = undefined;
+    }
     return {
       version: SYNC_SCHEMA_VERSION, deviceId: 'backup',
       timestamp: new Date().toISOString(),

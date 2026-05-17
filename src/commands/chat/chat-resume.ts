@@ -33,11 +33,13 @@ export async function listInterruptedSessions(): Promise<InterruptedSession[]> {
             messageCount: session.messages?.length || 0
           });
         }
-      } catch { /* skip invalid */ }
+      } catch (error) {
+        // Skip invalid session files
+      }
     }
     
     return sessions.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
-  } catch {
+  } catch (error) {
     return [];
   }
 }

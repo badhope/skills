@@ -11,6 +11,9 @@ import { interactiveHelp } from '../help.js';
 import { runSubCommand } from './command-runner.js';
 import { formatApiError } from './error-formatter.js';
 import { streamChat, resolveProvider } from './chat-service.js';
+import { createLogger } from '../../services/logger.js';
+
+const logger = createLogger('MenuChoice');
 
 /**
  * Handle main menu choice
@@ -75,11 +78,13 @@ export async function handleMenuChoice(choice: string): Promise<void> {
           const memoryConfig = configManager.getMemoryConfig();
           if (memoryConfig.enabled) {
             memoryManager.rememberChat({
-              input: userInput,
-              output: fullContent,
-              provider: providerType,
-              model: modelId,
-            }).catch(() => {});
+            input: userInput,
+            output: fullContent,
+            provider: providerType,
+            model: modelId,
+          }).catch((error) => {
+            logger.debug({ error }, 'Failed to remember chat');
+          });
           }
         } catch (error: unknown) {
           const { message, hint } = formatApiError(error);
@@ -121,7 +126,9 @@ export async function handleMenuChoice(choice: string): Promise<void> {
             output: fullContent,
             provider: providerType,
             model: modelId,
-          }).catch(() => {});
+          }).catch((error) => {
+            logger.debug({ error }, 'Failed to remember chat');
+          });
         }
       } catch (error: unknown) {
         const { message: msg, hint } = formatApiError(error);

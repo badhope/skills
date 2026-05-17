@@ -3,7 +3,39 @@
 // ============================================================
 
 // Re-export all types
-export * from './types.js';
+export type {
+  PluginManifest,
+  ToolDefinition,
+  ToolParameters,
+  ToolParameterProperty,
+  ToolExecuteFn,
+  ToolExecutionContext,
+  ToolResult,
+  CommandDefinition,
+  CommandOption,
+  CommandArgument,
+  ConfigManager,
+  PluginLogger,
+  PluginContext,
+  PluginActivateFn,
+  PluginDeactivateFn,
+  Plugin,
+  PluginHook,
+  IntentInfo,
+  ExecutionStep,
+  ExecutionPlan,
+  StepResult,
+  AgentResult,
+  RunContext,
+  StepContext,
+  ToolExecutionHookContext,
+  ErrorContext,
+  ConfigChangeContext,
+  HookHandler,
+  PluginState,
+  PluginDefinition,
+  PluginHookDefinition,
+} from './types.js';
 
 // Re-export event bus
 export { eventBus, EventBus } from './event-bus.js';

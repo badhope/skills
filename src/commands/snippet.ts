@@ -70,7 +70,9 @@ snippetCommand
         const snippet = JSON.parse(content);
         if (options.tag && !(snippet.tags || []).includes(options.tag)) continue;
         snippets.push(snippet);
-      } catch { /* skip */ }
+      } catch (error) {
+        // Skip invalid snippet files
+      }
     }
 
     if (snippets.length === 0) {

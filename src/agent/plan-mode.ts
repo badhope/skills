@@ -190,7 +190,9 @@ export async function runPlanMode(
             if (jsonMatch) {
               step.args = JSON.parse(jsonMatch[0]);
             }
-          } catch { /* 参数提取失败，跳过 */ }
+          } catch (error) {
+            // Parameter extraction failed, skip
+          }
         }
 
         if (step.args && Object.keys(step.args).length > 0) {

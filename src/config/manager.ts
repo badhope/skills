@@ -88,7 +88,9 @@ export class ConfigManager {
       try {
         const backupPath = this.configFile + '.backup';
         await fs.copyFile(this.configFile, backupPath);
-      } catch { /* 备份失败不影响保存 */ }
+      } catch (error) {
+        logger.debug({ error }, 'Backup failed, continuing with save');
+      }
 
       // 原子性写入：先写临时文件再重命名
       const tmpPath = this.configFile + '.tmp';

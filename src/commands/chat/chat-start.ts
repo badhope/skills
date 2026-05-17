@@ -16,6 +16,9 @@ import { EmotionalStateManager } from '../../agent/emotional-state.js';
 import { setCurrentSession } from '../../cli.js';
 import type { IProviderFactory, IConfigManager, ILLMProvider } from '../../services/interfaces.js';
 import { getErrorMessage } from '../../utils/error-handling.js';
+import { createLogger } from '../../services/logger.js';
+
+const logger = createLogger('ChatStart');
 
 const execFileAsync = promisify(execFile);
 
@@ -340,11 +343,13 @@ export async function startInteractiveChat(options: StartChatOptions = {}): Prom
 
         if (memoryConfig.enabled) {
           memoryManager.rememberChat({
-            input: userInput,
-            output: fullContent,
-            provider: providerType,
-            model: modelId,
-          }).catch(() => {});
+          input: userInput,
+          output: fullContent,
+          provider: providerType,
+          model: modelId,
+        }).catch((error) => {
+          logger.debug({ error }, 'Failed to remember chat');
+        });
         }
       } catch (error: unknown) {
         const errMsg = getErrorMessage(error);
@@ -362,7 +367,9 @@ export async function startInteractiveChat(options: StartChatOptions = {}): Prom
   }
 
   // 对话结束，保存人格状态
-  await personalityManager.save().catch(() => {});
+  await personalityManager.save().catch((error) => {
+    logger.debug({ error }, 'Failed to save personality');
+  });
 }
 
 export const chatStartCommand = new Command('start')

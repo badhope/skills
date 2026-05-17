@@ -178,10 +178,14 @@ export class TemplateManager {
           const raw = await fs.readFile(path.join(this.customTemplatesDir, entry.name), 'utf-8');
           const tpl = JSON.parse(raw) as PluginTemplate;
           if (tpl.name && tpl.files) { this.templates.set(tpl.name, tpl); count++; }
-        } catch { /* skip invalid */ }
+        } catch (error) {
+          // Skip invalid template files
+        }
       }
       return count;
-    } catch { return 0; }
+    } catch (error) {
+      return 0;
+    }
   }
 
   async saveCustomTemplate(template: PluginTemplate): Promise<void> {

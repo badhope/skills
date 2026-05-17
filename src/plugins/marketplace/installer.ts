@@ -69,7 +69,9 @@ export class PluginInstaller {
         try {
           await fs.access(targetPath);
           return { name, version, installedPath: targetPath, success: false, error: `Plugin "${name}" is already installed. Use --force to overwrite.` };
-        } catch { /* not installed - proceed */ }
+        } catch (error) {
+          // Proceed with installation
+        }
       }
       await fs.mkdir(installDir, { recursive: true });
       const sourcePath = this.resolveSourcePath(entry);
@@ -143,9 +145,13 @@ export class PluginInstaller {
           const raw = await fs.readFile(path.join(installDir, entry.name, 'manifest.json'), 'utf-8');
           const manifest = JSON.parse(raw);
           results.push({ name: manifest.name ?? entry.name, version: manifest.version ?? 'unknown', path: path.join(installDir, entry.name) });
-        } catch { /* skip invalid */ }
+        } catch (error) {
+          // Skip invalid plugin directories
+        }
       }
-    } catch { /* dir does not exist */ }
+    } catch (error) {
+      // Directory does not exist
+    }
     return results;
   }
 

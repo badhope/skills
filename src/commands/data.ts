@@ -45,7 +45,9 @@ dataCommand
           relationships: await kg.getAllRelationships(),
           stats: await kg.getStats(),
         };
-      } catch { /* skip */ }
+      } catch (error) {
+        // Skip knowledge graph export on error
+      }
 
       // 导出统计
       exportData.memoryStats = await memoryManager.getStats();
@@ -89,7 +91,9 @@ dataCommand
               });
               count++;
             }
-          } catch { /* skip */ }
+          } catch (error) {
+            // Skip invalid records
+          }
         }
         printSuccess(`已导入 ${count} 条记忆记录`);
       }

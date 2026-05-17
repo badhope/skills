@@ -96,7 +96,9 @@ export function validateBundle(bundle: ShareBundle): { valid: boolean; errors: s
 async function resolvePluginDir(pluginName: string): Promise<string | null> {
   for (const dir of PLUGIN_SEARCH_DIRS) {
     const candidate = path.join(resolveHome(dir), pluginName);
-    try { if ((await fs.stat(candidate)).isDirectory()) return candidate; } catch { /* skip */ }
+    try { if ((await fs.stat(candidate)).isDirectory()) return candidate; } catch (error) {
+      // Skip invalid directories
+    }
   }
   return null;
 }
@@ -139,9 +141,13 @@ export async function importPlugin(options: ImportOptions): Promise<ImportResult
   try {
     const raw = await fs.readFile(options.source, 'utf-8');
     bundle = stringToBundle(raw);
-  } catch { try { bundle = stringToBundle(options.source); } catch {
-    return { success: false, pluginName: '', version: '', filesImported: 0, installed: false, error: 'Invalid bundle: cannot read file or parse JSON' };
-  }}
+  } catch (error) {
+    try {
+      bundle = stringToBundle(options.source);
+    } catch (parseError) {
+      return { success: false, pluginName: '', version: '', filesImported: 0, installed: false, error: 'Invalid bundle: cannot read file or parse JSON' };
+    }
+  }
   const validation = validateBundle(bundle);
   if (!validation.valid) {
     return { success: false, pluginName: bundle.plugin?.manifest?.name ?? '', version: bundle.plugin?.manifest?.version ?? '',
@@ -153,7 +159,9 @@ export async function importPlugin(options: ImportOptions): Promise<ImportResult
     const installDir = options.global ? path.join(defaultConfigDir(), 'plugins') : path.resolve('./plugins');
     const targetPath = path.join(installDir, manifest.name);
     try { if (!options.overwrite) { await fs.access(targetPath); return { success: false, pluginName: manifest.name, version: manifest.version,
-      filesImported: 0, installed: false, error: `Plugin "${manifest.name}" already exists. Use overwrite option to replace.` }; }} catch { /* proceed */ }
+      filesImported: 0, installed: false, error: `Plugin "${manifest.name}" already exists. Use overwrite option to replace.` }; }} catch (error) {
+      // Proceed with installation
+    }
     await fs.mkdir(targetPath, { recursive: true });
     for (const [filename, content] of Object.entries(files)) {
       await fs.writeFile(path.join(targetPath, filename), Buffer.from(content, 'base64').toString('utf-8'), 'utf-8');

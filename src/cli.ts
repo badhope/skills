@@ -75,7 +75,9 @@ const cleanup = async () => {
     
     // 4. 执行最后一次同步（非阻塞，最多等待 3 秒）
     await Promise.race([
-      syncManager.sync().catch(() => {}),
+      syncManager.sync().catch((error) => {
+        logger.debug({ error }, 'Final sync failed during shutdown');
+      }),
       new Promise(resolve => setTimeout(resolve, SHUTDOWN_DELAY_MS))
     ]);
     
@@ -88,7 +90,9 @@ const cleanup = async () => {
 // 同步版本用于 exit 事件
 const cleanupSync = () => {
   // exit 事件中无法执行异步操作，但可以触发
-  cleanup().catch(() => {});
+  cleanup().catch((error) => {
+    logger.debug({ error }, 'Cleanup failed during exit');
+  });
 };
 
 process.on('exit', cleanupSync);
@@ -209,8 +213,8 @@ if (process.argv.length === 2) {
           }
           console.log();
         }
-      } catch {
-        // 健康检查失败不影响主流程
+      } catch (error) {
+        logger.debug({ error }, 'Health check failed');
       }
     } catch (error: unknown) {
       const errMsg = getErrorMessage(error);

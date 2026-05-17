@@ -183,7 +183,9 @@ export async function runActMode(
             if (jsonMatch) {
               step.args = JSON.parse(jsonMatch[0]);
             }
-          } catch { /* 参数提取失败 */ }
+          } catch (error) {
+            // Parameter extraction failed
+          }
         }
 
         // 信任检查（写入类工具）
@@ -270,7 +272,9 @@ export async function runActMode(
             default: false,
           }]);
           if (!cont) break;
-        } catch { break; }
+        } catch (error) {
+          break;
+        }
       }
     }
   }

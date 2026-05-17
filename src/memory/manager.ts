@@ -161,10 +161,15 @@ export class MemoryManager {
                 return record;
               } else {
                 // 删除无效记录文件
-                await fs.unlink(path.join(this.storagePath, file)).catch(() => {});
+                await fs.unlink(path.join(this.storagePath, file)).catch((error) => {
+                  logger.debug({ error }, 'Failed to delete invalid record file');
+                });
                 return null;
               }
-            } catch { return null; }
+            } catch (error) {
+              logger.debug({ error }, 'Failed to parse record file');
+              return null;
+            }
           })
         );
         records.push(...batchResults.filter(Boolean) as MemoryInteraction[]);
@@ -197,7 +202,8 @@ export class MemoryManager {
       return records.sort((a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
-    } catch {
+    } catch (error) {
+      logger.debug({ error }, 'Failed to load records');
       return [];
     }
   }
@@ -416,7 +422,9 @@ export class MemoryManager {
             await fs.unlink(path.join(this.storagePath, file));
           }
         }
-      } catch { /* ignore */ }
+      } catch (error) {
+        logger.debug({ error }, 'Failed to delete some files during clear');
+      }
     });
   }
 }

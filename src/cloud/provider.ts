@@ -47,7 +47,9 @@ export class LocalSyncProvider implements SyncProvider {
 
   async download(): Promise<SyncData | null> {
     try { return JSON.parse(await fs.readFile(this.dataFile, 'utf-8')) as SyncData; }
-    catch { return null; }
+    catch (error) {
+      return null;
+    }
   }
 
   async listDevices(): Promise<DeviceInfo[]> { return this.loadDevices(); }
@@ -59,7 +61,9 @@ export class LocalSyncProvider implements SyncProvider {
 
   private async loadDevices(): Promise<DeviceInfo[]> {
     try { return JSON.parse(await fs.readFile(this.devicesFile, 'utf-8')) as DeviceInfo[]; }
-    catch { return []; }
+    catch (error) {
+      return [];
+    }
   }
 }
 
@@ -84,13 +88,19 @@ export class GistSyncProvider implements SyncProvider {
       const res = await this.gistRequest('GET', `/gists/${this.gistId}`) as { files?: Record<string, { content?: string }> };
       const content = res.files?.['devflow-sync.json']?.content;
       return content ? JSON.parse(content) as SyncData : null;
-    } catch { return null; }
+    } catch (error) {
+      return null;
+    }
   }
 
   async listDevices(): Promise<DeviceInfo[]> {
-    const data = await this.download();
-    return data ? [{ id: data.deviceId, name: 'Gist Sync', lastSeenAt: data.timestamp, 
-      platform: 'unknown', version: data.version }] : [];
+    try {
+      const data = await this.download();
+      return data ? [{ id: data.deviceId, name: 'Gist Sync', lastSeenAt: data.timestamp,
+        platform: 'unknown', version: data.version }] : [];
+    } catch (error) {
+      return [];
+    }
   }
 
   async removeDevice(): Promise<void> { throw new Error('Device management not supported for Gist'); }
@@ -133,8 +143,18 @@ export class CustomSyncProvider implements SyncProvider {
   constructor(endpoint: string, token: string) { this.endpoint = endpoint; this.token = token; }
 
   async upload(data: SyncData): Promise<void> { await this.request('POST', '/sync/upload', data); }
-  async download(): Promise<SyncData | null> { try { return await this.request('GET', '/sync/download') as SyncData; } catch { return null; } }
-  async listDevices(): Promise<DeviceInfo[]> { try { return await this.request('GET', '/sync/devices') as DeviceInfo[]; } catch { return []; } }
+  async download(): Promise<SyncData | null> {
+    try { return await this.request('GET', '/sync/download') as SyncData; }
+    catch (error) {
+      return null;
+    }
+  }
+  async listDevices(): Promise<DeviceInfo[]> {
+    try { return await this.request('GET', '/sync/devices') as DeviceInfo[]; }
+    catch (error) {
+      return [];
+    }
+  }
   async removeDevice(deviceId: string): Promise<void> { await this.request('DELETE', `/sync/devices/${deviceId}`); }
 
   private request(method: string, reqPath: string, body?: unknown): Promise<unknown> {

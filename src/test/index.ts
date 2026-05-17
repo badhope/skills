@@ -4,5 +4,10 @@
  * Barrel exports for test utilities and fixtures.
  */
 
-export * from './fixtures.js';
-export * from './setup.js';
+export {
+  mockMemoryEntry,
+  mockProviderResponse,
+  mockChatMessage,
+  mockChatResponse,
+  mockConfig,
+} from './fixtures.js';

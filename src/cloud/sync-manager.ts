@@ -123,7 +123,9 @@ export class SyncManager {
     this.ensureCleanup();
     const interval = (intervalMinutes || this.config.syncInterval || 5) * 60 * 1000;
     this.stopAutoSync();
-    this.syncInterval = setInterval(() => this.sync().catch(e => logger.error({ error: e }, 'Auto sync failed')), interval);
+    this.syncInterval = setInterval(() => this.sync().catch((error) => {
+      logger.debug({ error }, 'Auto sync failed');
+    }), interval);
   }
 
   stopAutoSync(): void { if (this.syncInterval) { clearInterval(this.syncInterval); this.syncInterval = undefined; } }

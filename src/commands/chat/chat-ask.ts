@@ -6,6 +6,9 @@ import { printSuccess, printError, printWarning, printInfo, createSpinner } from
 import { memoryManager } from '../../memory/manager.js';
 import { resolveProvider, checkApiKey, createProviderInstance, getChatParams } from './helpers.js';
 import { getErrorMessage } from '../../utils/error-handling.js';
+import { createLogger } from '../../services/logger.js';
+
+const logger = createLogger('ChatAsk');
 
 export interface AskQuestionOptions {
   model?: string;
@@ -160,7 +163,9 @@ export async function askQuestion(message: string, options: AskQuestionOptions =
             output: response.content,
             provider: providerType,
             model: modelId,
-          }).catch(() => {}); // 不阻塞主流程
+          }).catch((error) => {
+            logger.debug({ error }, 'Failed to remember chat');
+          });
         }
 
         return;

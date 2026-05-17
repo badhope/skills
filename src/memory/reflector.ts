@@ -35,7 +35,9 @@ export class MemoryReflector {
       const parsed = JSON.parse(data);
       this.insights = parsed.insights || [];
       this.reports = parsed.reports || [];
-    } catch { /* 首次使用 */ }
+    } catch (error) {
+      // First time use - no insights file yet
+    }
   }
 
   private async save(): Promise<void> {
