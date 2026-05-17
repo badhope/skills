@@ -2,6 +2,9 @@ import path from 'path';
 import type { ReviewIssue } from './types.js';
 import { createProvider } from '../providers/index.js';
 import { configManager } from '../config/manager.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('ai-review');
 
 // ============================================================
 // AI驱动的深度代码审查
@@ -68,27 +71,36 @@ export async function aiReview(content: string, filePath: string, categories: st
 ${codeForReview}
 \`\`\``;
 
-  try {
-    const response = await provider.chat({
-      messages: [
-        { role: 'system', content: '你是一个代码审查专家，只输出JSON格式的审查结果。' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.3,
-      maxTokens: 4096,
-    });
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await provider.chat({
+        messages: [
+          { role: 'system', content: '你是一个代码审查专家，只输出JSON格式的审查结果。' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+        maxTokens: 4096,
+      });
 
-    const jsonMatch = response.content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const issues = JSON.parse(jsonMatch[0]) as ReviewIssue[];
-      return issues.map(issue => ({
-        ...issue,
-        severity: ['error', 'warning', 'info'].includes(issue.severity) ? issue.severity : 'info' as const,
-        category: ['quality', 'bugs', 'performance', 'security'].includes(issue.category) ? issue.category : 'quality' as const,
-      }));
+      const jsonMatch = response.content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const issues = JSON.parse(jsonMatch[0]) as ReviewIssue[];
+        return issues.map(issue => ({
+          ...issue,
+          severity: ['error', 'warning', 'info'].includes(issue.severity) ? issue.severity : 'info' as const,
+          category: ['quality', 'bugs', 'performance', 'security'].includes(issue.category) ? issue.category : 'quality' as const,
+        }));
+      }
+      return [];
+    } catch (error) {
+      if (attempt === MAX_RETRIES - 1) {
+        logger.warn({ error: error instanceof Error ? error.message : String(error) }, 'AI review failed after retries');
+        return [];
+      }
+      // 指数退避等待
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
     }
-  } catch {
-    // AI审查失败，静默处理
   }
 
   return [];

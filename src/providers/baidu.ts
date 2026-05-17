@@ -1,5 +1,5 @@
 import { BaseProvider } from '../base.js';
-import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message } from '../types.js';
+import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message, TextContent } from '../types.js';
 import { PROVIDER_INFO } from '../types.js';
 import { CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 
@@ -68,7 +68,10 @@ export class BaiduProvider extends BaseProvider {
     const accessToken = await this.getAccessToken();
 
     const body = {
-      messages: params.messages,
+      messages: params.messages.map(msg => ({
+        role: msg.role,
+        content: this.convertContent(msg.content),
+      })),
       temperature: params.temperature ?? 0.7,
       max_output_tokens: params.maxTokens ?? 4096,
     };
@@ -119,7 +122,10 @@ export class BaiduProvider extends BaseProvider {
     const accessToken = await this.getAccessToken();
 
     const body = {
-      messages: params.messages,
+      messages: params.messages.map(msg => ({
+        role: msg.role,
+        content: this.convertContent(msg.content),
+      })),
       temperature: params.temperature ?? 0.7,
       max_output_tokens: params.maxTokens ?? 4096,
       stream: true,
@@ -192,12 +198,30 @@ export class BaiduProvider extends BaseProvider {
                 const data = JSON.parse(line.slice(6)) as {
                   result?: string;
                   is_end?: boolean;
+                  usage?: {
+                    prompt_tokens: number;
+                    completion_tokens: number;
+                    total_tokens: number;
+                  };
                 };
 
                 if (data.result) {
                   yield {
                     content: data.result,
                     done: false,
+                  };
+                }
+
+                // Parse usage info from the final chunk
+                if (data.is_end && data.usage) {
+                  yield {
+                    content: '',
+                    done: true,
+                    usage: {
+                      promptTokens: data.usage.prompt_tokens || 0,
+                      completionTokens: data.usage.completion_tokens || 0,
+                      totalTokens: data.usage.total_tokens || 0,
+                    }
                   };
                 }
               } catch {
@@ -236,5 +260,19 @@ export class BaiduProvider extends BaseProvider {
     } catch {
       return false;
     }
+  }
+
+  // 将 MessageContent 转换为百度兼容的字符串内容
+  private convertContent(content: Message['content']): string {
+    if (typeof content === 'string') {
+      return content;
+    } else if (Array.isArray(content)) {
+      // Extract text parts, ignore images (Baidu has limited multimodal support in this format)
+      return content
+        .filter((p): p is TextContent => typeof p !== 'string' && p.type === 'text')
+        .map(p => p.text)
+        .join('\n');
+    }
+    return String(content);
   }
 }

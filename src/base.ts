@@ -46,7 +46,7 @@ export abstract class BaseProvider {
       const response = await fetch(url, {
         method: 'GET',
         headers: this.buildHeaders(),
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(this.getTimeout()),
       });
       if (!response.ok) return this._modelsCache?.data || [];
       const data = await response.json() as { data?: Array<{ id: string }> } | Array<{ id: string }>;

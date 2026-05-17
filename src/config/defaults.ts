@@ -106,4 +106,9 @@ export const DEFAULT_CONFIG: Config = {
     allowDangerousOps: false,
     confirmOnRisk: true,
   },
+  circuitBreaker: {
+    failureThreshold: 5,
+    resetTimeout: 60000,
+    halfOpenMaxCalls: 3,
+  },
 };

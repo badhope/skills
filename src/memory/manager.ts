@@ -10,6 +10,7 @@ import { AsyncLock } from '../utils/async-lock.js';
 import { createLogger } from '../services/logger.js';
 import { CACHE_TTL_MS } from '../constants/index.js';
 import { getErrorMessage } from '../utils/error-handling.js';
+import { configManager } from '../config/manager.js';
 
 
 const logger = createLogger('memory');
@@ -53,9 +54,18 @@ export class MemoryManager {
    */
   async initRAG(apiKey?: string): Promise<boolean> {
     try {
-      const key = apiKey || processDELETE.ALIYUN_API_KEY || processDELETE.DASHSCOPE_API_KEY;
+      // 优先使用传入的 apiKey，其次从当前默认 provider 配置中获取
+      const key = apiKey || (() => {
+        const defaultProvider = configManager.getDefaultProvider();
+        if (defaultProvider) {
+          const providerConfig = configManager.getProviderConfig(defaultProvider);
+          if (providerConfig.apiKey) return providerConfig.apiKey;
+        }
+        // 向后兼容：仍然检查环境变量
+        return processDELETE.ALIYUN_API_KEY || processDELETE.DASHSCOPE_API_KEY;
+      })();
       if (!key) {
-        logger.warn('RAG disabled: Aliyun API Key not configured');
+        logger.warn('RAG disabled: no API Key configured for default provider');
         return false;
       }
       await ragModule.init(key);

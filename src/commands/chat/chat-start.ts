@@ -113,8 +113,9 @@ export async function startInteractiveChat(options: StartChatOptions = {}): Prom
     if (projectConfig.instructions) {
       console.log(chalk.dim('  已加载项目配置 (DEVFLOW.md)'));
     }
-  } catch {
+  } catch (error) {
     // 项目配置加载失败不影响主流程
+    console.warn('项目配置加载失败:', error instanceof Error ? error.message : String(error));
   }
 
   // 生成会话 ID 并注册到全局状态追踪
@@ -329,8 +330,10 @@ export async function startInteractiveChat(options: StartChatOptions = {}): Prom
                 ));
               }
             }
-          } catch {
+          } catch (error) {
             // 自动压缩失败，回退到简单截断
+            console.log(chalk.dim('  ⚠️ 自动压缩失败，回退到简单截断'));
+            console.warn('对话压缩失败:', error instanceof Error ? error.message : String(error));
             messages.splice(0, 2);
           }
         }

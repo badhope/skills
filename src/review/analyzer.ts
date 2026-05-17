@@ -4,6 +4,9 @@ import type { ReviewResult, ReviewOptions, ReviewIssue } from './types.js';
 import { calculateMetrics } from './metrics.js';
 import { ReviewRulesEngine } from './rules.js';
 import { aiReview } from './ai-review.js';
+import { createLogger } from '../services/logger.js';
+
+const logger = createLogger('review-analyzer');
 
 /**
  * 代码分析器 - 整合 ESLint 规则检测、AI 审查和代码指标
@@ -30,8 +33,9 @@ export class CodeAnalyzer {
     if (this.isJavaScriptFile(filePath)) {
       try {
         eslintIssues = await this.rulesEngine.analyze(filePath);
-      } catch {
+      } catch (error) {
         // ESLint 失败时回退到快速规则检测
+        logger.debug({ error: error instanceof Error ? error.message : String(error), filePath }, 'ESLint analysis failed, falling back to quick check');
         eslintIssues = ReviewRulesEngine.quickCheck(content, filePath);
       }
     } else {
@@ -125,8 +129,9 @@ export class CodeAnalyzer {
               if (result.issues.length > 0) {
                 results.push(result);
               }
-            } catch {
+            } catch (error) {
               // 跳过无法读取的文件
+              logger.debug({ error: error instanceof Error ? error.message : String(error), filePath: fullPath }, 'Skipping unreadable file');
             }
           }
         }

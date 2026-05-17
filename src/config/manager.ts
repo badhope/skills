@@ -198,6 +198,10 @@ export class ConfigManager {
     return SANDBOX_PERMISSIONS[this.config.sandbox.level];
   }
 
+  getCircuitBreakerConfig() {
+    return this.config.circuitBreaker;
+  }
+
   checkSandboxPermission(action: 'delete' | 'modify' | 'network' | 'exec', path?: string): {
     allowed: boolean;
     requiresConfirmation: boolean;
@@ -249,6 +253,7 @@ export class ConfigManager {
       chat: { ...defaults.chat, ...loaded.chat },
       memory: { ...defaults.memory, ...loaded.memory },
       sandbox: { ...defaults.sandbox, ...loaded.sandbox },
+      circuitBreaker: { ...defaults.circuitBreaker, ...loaded.circuitBreaker },
     };
   }
 }

@@ -34,12 +34,23 @@ export interface ReasonerConfig {
 
 // ==================== 模块状态 ====================
 
-/** 模块级别的熔断器实例 */
-const llmCircuitBreaker = new CircuitBreaker({
-  failureThreshold: 3,
-  resetTimeout: 30000,
-  halfOpenMaxCalls: 2,
-});
+/** 模块级别的熔断器实例（延迟初始化） */
+let llmCircuitBreaker: CircuitBreaker | null = null;
+
+/**
+ * 获取或创建熔断器实例（从配置中读取参数）
+ */
+function getCircuitBreaker(): CircuitBreaker {
+  if (!llmCircuitBreaker) {
+    const cbConfig = configManager.getCircuitBreakerConfig();
+    llmCircuitBreaker = new CircuitBreaker({
+      failureThreshold: cbConfig?.failureThreshold ?? 5,
+      resetTimeout: cbConfig?.resetTimeout ?? 60000,
+      halfOpenMaxCalls: cbConfig?.halfOpenMaxCalls ?? 3,
+    });
+  }
+  return llmCircuitBreaker;
+}
 
 /** 配置初始化 Promise（防止并发初始化） */
 let configInitPromise: Promise<void> | null = null;
@@ -68,11 +79,12 @@ async function fetchWithTimeout<T>(
  * 获取默认配置，合并用户传入的配置
  */
 export function resolveConfig(config?: ReasonerConfig): Required<ReasonerConfig> {
+  const chatConfig = configManager.getChatConfig();
   return {
     provider: config?.provider || configManager.getDefaultProvider() || 'openai',
     model: config?.model || '',
-    temperature: config?.temperature ?? 0.3,
-    maxTokens: config?.maxTokens ?? 2048,
+    temperature: config?.temperature ?? chatConfig?.defaultTemperature ?? 0.7,
+    maxTokens: config?.maxTokens ?? chatConfig?.defaultMaxTokens ?? 2048,
     timeout: config?.timeout ?? 60000,
   };
 }
@@ -92,7 +104,7 @@ export async function callLLM(
   messages: Message[],
   config?: ReasonerConfig
 ): Promise<string> {
-  return llmCircuitBreaker.execute(async () => {
+  return getCircuitBreaker().execute(async () => {
     try {
       // 初始化配置管理器
       if (!configInitPromise) {

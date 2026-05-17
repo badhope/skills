@@ -36,6 +36,11 @@ interface OpenAIStreamResponse {
     };
     finish_reason: string | null;
   }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 /**
@@ -185,6 +190,19 @@ export class OpenAIProvider extends BaseProvider {
                   yield {
                     content: delta.content,
                     done: false,
+                  };
+                }
+
+                // Parse usage info from the final chunk
+                if (data.usage) {
+                  yield {
+                    content: '',
+                    done: true,
+                    usage: {
+                      promptTokens: data.usage.prompt_tokens || 0,
+                      completionTokens: data.usage.completion_tokens || 0,
+                      totalTokens: (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0),
+                    }
                   };
                 }
               } catch {

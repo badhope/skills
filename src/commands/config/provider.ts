@@ -265,6 +265,16 @@ providerCommand
       detected.push({ provider: 'google', confidence: 80 });
     }
     
+    // 百度千帆：格式为 appId.secretKey（包含 '.' 的特定格式）
+    if (apiKey.includes('.') && /^\d+\..+$/.test(apiKey)) {
+      detected.push({ provider: 'baidu', confidence: 80 });
+    }
+    
+    // 智谱AI：通常为 32 位十六进制字符串（无特定前缀，通过长度和字符模式判断）
+    if (/^[a-f0-9]{32}$/i.test(apiKey)) {
+      detected.push({ provider: 'zhipu', confidence: 60 });
+    }
+    
     if (detected.length === 0) {
       printInfo('无法识别API密钥格式，请手动指定平台');
       console.log(chalk.gray('用法: devflow config set-key <平台> <apiKey>'));

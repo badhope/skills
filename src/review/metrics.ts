@@ -219,8 +219,9 @@ export async function calculateMetrics(content: string, filePath?: string): Prom
         halstead.bugs = Math.round((h.bugs || halstead.bugs) * 1000) / 1000;
         halstead.time = Math.round((h.time || halstead.time) * 100) / 100;
       }
-    } catch {
+    } catch (error) {
       // escomplex 分析失败，使用备用估算
+      // escomplex not available or failed, using fallback estimation
       const complexityKeywords = /\b(if|else|elif|for|while|case|catch|\?\?|&&|\|\||switch|break|continue|return|throw)\b/g;
       const matches = content.match(complexityKeywords);
       complexity = (matches ? matches.length : 0) + 1;

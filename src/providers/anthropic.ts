@@ -34,6 +34,12 @@ interface AnthropicStreamEvent {
     input_tokens: number;
     output_tokens: number;
   };
+  message?: {
+    usage?: {
+      input_tokens: number;
+      output_tokens: number;
+    };
+  };
 }
 
 /**
@@ -207,6 +213,19 @@ export class AnthropicProvider extends BaseProvider {
                   yield {
                     content: event.delta.text,
                     done: false,
+                  };
+                }
+
+                // Parse usage from the message_end event
+                if (event.type === 'message_end' && event.message?.usage) {
+                  yield {
+                    content: '',
+                    done: true,
+                    usage: {
+                      promptTokens: event.message.usage.input_tokens || 0,
+                      completionTokens: event.message.usage.output_tokens || 0,
+                      totalTokens: (event.message.usage.input_tokens || 0) + (event.message.usage.output_tokens || 0),
+                    }
                   };
                 }
               } catch {

@@ -1,5 +1,5 @@
 import { BaseProvider } from '../base.js';
-import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message } from '../types.js';
+import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message, ImageContent, TextContent } from '../types.js';
 import { PROVIDER_INFO } from '../types.js';
 import { CONNECTION_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../constants/index.js';
 
@@ -29,6 +29,19 @@ interface GoogleModelsResponse {
     displayName: string;
     supportedGenerationMethods: string[];
   }>;
+}
+
+/**
+ * Gemini 内容部分（文本或内联图片数据）
+ */
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Gemini 消息内容
+ */
+interface GeminiContent {
+  role: string;
+  parts: GeminiPart[];
 }
 
 export class GoogleProvider extends BaseProvider {
@@ -184,6 +197,19 @@ export class GoogleProvider extends BaseProvider {
                   done: false,
                 };
               }
+
+              // Parse usage info from stream chunks
+              if (data.usageMetadata) {
+                yield {
+                  content: '',
+                  done: true,
+                  usage: {
+                    promptTokens: data.usageMetadata.promptTokenCount || 0,
+                    completionTokens: data.usageMetadata.candidatesTokenCount || 0,
+                    totalTokens: data.usageMetadata.totalTokenCount || 0,
+                  }
+                };
+              }
             } catch {
               // 忽略解析错误
             }
@@ -237,19 +263,49 @@ export class GoogleProvider extends BaseProvider {
     }
   }
 
-  private convertMessages(messages: Message[]): { contents: Array<{ role: string; parts: Array<{ text: string }> }>; systemInstruction?: { parts: Array<{ text: string }> } } {
-    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+  private convertMessages(messages: Message[]): { contents: GeminiContent[]; systemInstruction?: { parts: Array<{ text: string }> } } {
+    const contents: GeminiContent[] = [];
     let systemInstruction: { parts: Array<{ text: string }> } | undefined;
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        const textContent = typeof msg.content === 'string' ? msg.content : String(msg.content);
+        const textContent = typeof msg.content === 'string'
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content.filter((p): p is TextContent => typeof p !== 'string' && p.type === 'text').map(p => p.text).join('\n')
+            : String(msg.content);
         systemInstruction = { parts: [{ text: textContent }] };
       } else {
-        const textContent = typeof msg.content === 'string' ? msg.content : String(msg.content);
+        const parts: GeminiPart[] = [];
+
+        if (typeof msg.content === 'string') {
+          parts.push({ text: msg.content });
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (typeof part === 'string') {
+              parts.push({ text: part });
+            } else if (part.type === 'text') {
+              parts.push({ text: (part as TextContent).text });
+            } else if (part.type === 'image_url' && (part as ImageContent).image_url?.url) {
+              // Convert base64 data URL to Gemini format
+              const match = (part as ImageContent).image_url.url.match(/^data:(.+);base64,(.+)$/);
+              if (match) {
+                parts.push({
+                  inlineData: {
+                    mimeType: match[1],
+                    data: match[2],
+                  },
+                });
+              }
+            }
+          }
+        } else {
+          parts.push({ text: String(msg.content) });
+        }
+
         contents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: textContent }],
+          parts,
         });
       }
     }

@@ -1,5 +1,5 @@
 import { BaseProvider } from '../base.js';
-import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message } from '../types.js';
+import type { ChatParams, ChatResponse, StreamChunk, ProviderConfig, Message, TextContent } from '../types.js';
 import { PROVIDER_INFO } from '../types.js';
 import { formatBytes } from '../utils/format.js';
 import { CONNECTION_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../constants/index.js';
@@ -81,7 +81,7 @@ export class OllamaProvider extends BaseProvider {
     // 转换消息格式为Ollama格式
     const messages = params.messages.map(msg => ({
       role: msg.role,
-      content: msg.content,
+      content: this.convertContent(msg.content),
     }));
 
     const body = {
@@ -140,7 +140,7 @@ export class OllamaProvider extends BaseProvider {
 
     const messages = params.messages.map(msg => ({
       role: msg.role,
-      content: msg.content,
+      content: this.convertContent(msg.content),
     }));
 
     const body = {
@@ -203,6 +203,23 @@ export class OllamaProvider extends BaseProvider {
                 done: data.done,
               };
             }
+
+            // Parse usage info from the final done chunk
+            if (data.done) {
+              const promptTokens = (data as OllamaChatStreamResponse & { prompt_eval_count?: number }).prompt_eval_count || 0;
+              const completionTokens = (data as OllamaChatStreamResponse & { eval_count?: number }).eval_count || 0;
+              if (promptTokens > 0 || completionTokens > 0) {
+                yield {
+                  content: '',
+                  done: true,
+                  usage: {
+                    promptTokens,
+                    completionTokens,
+                    totalTokens: promptTokens + completionTokens,
+                  }
+                };
+              }
+            }
           } catch {
             // 忽略解析错误
           }
@@ -244,6 +261,20 @@ export class OllamaProvider extends BaseProvider {
     } catch {
       return [];
     }
+  }
+
+  // 将 MessageContent 转换为 Ollama 兼容的字符串内容
+  private convertContent(content: Message['content']): string {
+    if (typeof content === 'string') {
+      return content;
+    } else if (Array.isArray(content)) {
+      // Extract text parts, ignore images for now (Ollama has limited multimodal support)
+      return content
+        .filter((p): p is TextContent => typeof p !== 'string' && p.type === 'text')
+        .map(p => p.text)
+        .join('\n');
+    }
+    return String(content);
   }
 
   // 获取本地已安装的模型列表

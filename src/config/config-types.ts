@@ -35,6 +35,11 @@ export interface Config {
     allowDangerousOps: boolean;
     confirmOnRisk: boolean;
   };
+  circuitBreaker?: {
+    failureThreshold: number;
+    resetTimeout: number;
+    halfOpenMaxCalls: number;
+  };
 }
 
 export type SandboxLevel = 'minimal' | 'conservative' | 'balanced' | 'relaxed' | 'extreme';
