@@ -36,18 +36,30 @@ export class BaiduProvider extends BaseProvider {
       return this.accessToken;
     }
 
-    const apiKey = this.getApiKey();
-    const secretKey = this.config.apiKey; // 百度需要两个key，这里简化处理
-
+    const apiKey = this.config.apiKey;
     if (!apiKey) {
       throw new Error('百度API需要配置API Key');
     }
 
-    // 实际实现需要调用百度的token接口
-    // 这里简化处理，假设apiKey就是access_token格式
-    this.accessToken = apiKey;
-    this.tokenExpiresAt = Date.now() + 3600 * 1000; // 1小时过期
+    // Parse apiKey as "appId.secretKey" format
+    const [appId, secretKey] = apiKey.split('.');
+    if (!appId || !secretKey) {
+      throw new Error('Baidu API Key format should be "appId.secretKey"');
+    }
 
+    // Call Baidu token API
+    const response = await fetch(
+      `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${appId}&client_secret=${secretKey}`,
+      { method: 'POST' }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Baidu access token: ${response.status}`);
+    }
+
+    const data = await response.json() as { access_token: string; expires_in: number };
+    this.accessToken = data.access_token;
+    this.tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000; // Refresh 1 min early
     return this.accessToken;
   }
 
@@ -103,10 +115,114 @@ export class BaiduProvider extends BaseProvider {
   }
 
   async *stream(params: ChatParams): AsyncGenerator<StreamChunk> {
-    // 百度流式实现较复杂，这里先返回非流式结果
-    const response = await this.chat(params);
-    yield { content: response.content, done: false };
-    yield { content: '', done: true };
+    const model = params.model || this.getDefaultModel();
+    const accessToken = await this.getAccessToken();
+
+    const body = {
+      messages: params.messages,
+      temperature: params.temperature ?? 0.7,
+      max_output_tokens: params.maxTokens ?? 4096,
+      stream: true,
+    };
+
+    const url = `${this.getBaseUrl()}/chat/completions?access_token=${accessToken}`;
+
+    const response = await this.retryStreamWithBackoff(async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.getTimeout()),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`流式请求失败 (${res.status}): ${errorText}`);
+      }
+
+      return res;
+    });
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('无法获取响应流');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let released = false;
+
+    // 确保 reader 总是被释放的辅助函数
+    const ensureReleased = () => {
+      if (!released && reader) {
+        released = true;
+        try {
+          reader.releaseLock();
+        } catch {
+          // 忽略释放错误
+        }
+      }
+    };
+
+    const MAX_ITERATIONS = 10000;
+    const startTime = Date.now();
+    const MAX_TOTAL_TIME = 300000; // 5 minutes
+    let iterations = 0;
+
+    try {
+      while (true) {
+        if (++iterations > MAX_ITERATIONS) throw new Error('Stream limit exceeded');
+        if (Date.now() - startTime > MAX_TOTAL_TIME) throw new Error('Stream timeout');
+
+        try {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.trim() === '' || line.trim() === 'data: [DONE]') continue;
+
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6)) as {
+                  result?: string;
+                  is_end?: boolean;
+                };
+
+                if (data.result) {
+                  yield {
+                    content: data.result,
+                    done: false,
+                  };
+                }
+              } catch {
+                // 忽略解析错误
+              }
+            }
+          }
+        } catch (streamError) {
+          // 流读取错误时也要确保释放
+          ensureReleased();
+          throw streamError;
+        }
+      }
+    } catch (error) {
+      ensureReleased();
+      throw error;
+    } finally {
+      // 最终确保释放
+      ensureReleased();
+    }
+
+    yield {
+      content: '',
+      done: true,
+    };
   }
 
   async isAvailable(): Promise<boolean> {

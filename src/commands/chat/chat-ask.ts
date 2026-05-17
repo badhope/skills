@@ -103,7 +103,9 @@ export async function askQuestion(message: string, options: AskQuestionOptions =
       if (i === 0) {
         process.stdout.write(chalk.green('AI: '));
       } else {
-        process.stdout.write(chalk.green(`\nAI [${modelInfo?.name || modelId}]: `));
+        // Clear previous model's output and show new model header
+        process.stdout.write(chalk.yellow('\n[切换到备用模型]\n'));
+        process.stdout.write(chalk.green(`AI [${modelInfo?.name || modelId}]: `));
       }
 
       try {

@@ -3,8 +3,7 @@
 // ============================================================
 
 import { BaseService } from './base.js';
-import { injectable, inject } from 'tsyringe';
-import { TOKENS } from '../di/tokens.js';
+import { injectable } from 'tsyringe';
 import type { IProviderFactory, IConfigManager } from './interfaces.js';
 
 /**
@@ -27,11 +26,15 @@ export interface CompressionResult {
  */
 @injectable()
 export class CompressionService extends BaseService {
-  constructor(
-    @inject(TOKENS.ProviderFactory) private providerFactory: IProviderFactory,
-    @inject(TOKENS.ConfigManager) private config: IConfigManager
-  ) {
+  private providerFactory: IProviderFactory;
+  private config: IConfigManager;
+
+  constructor();
+  constructor(providerFactory: IProviderFactory, config: IConfigManager);
+  constructor(providerFactory?: IProviderFactory, config?: IConfigManager) {
     super();
+    this.providerFactory = providerFactory!;
+    this.config = config!;
   }
 
   /**

@@ -385,6 +385,7 @@ export class AnthropicProvider extends BaseProvider {
     if (reason === 'end_turn') return 'stop';
     if (reason === 'max_tokens') return 'length';
     if (reason === 'stop_sequence') return 'stop';
+    if (reason === 'content_filter') return 'content_filter';
     return undefined;
   }
 }
