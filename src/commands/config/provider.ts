@@ -44,12 +44,21 @@ providerCommand
         printError('请在命令行中提供API密钥: devflow config set-key <provider> <apiKey>');
         return;
       }
+      const keyHint = info.keyPrefix 
+        ? chalk.gray(` (格式: ${info.keyPrefix}...)`) 
+        : '';
       const answer = await inquirer.prompt([{
         type: 'password',
         name: 'apiKey',
-        message: `请输入 ${info.displayName} API密钥:`,
+        message: `请输入 ${info.displayName} API密钥${keyHint}:`,
         mask: '*',
-        validate: (input: string) => input.trim() !== '' || 'API密钥不能为空'
+        validate: (input: string) => {
+          if (input.trim() === '') return 'API密钥不能为空';
+          if (info.keyPrefix && !input.startsWith(info.keyPrefix)) {
+            return `API密钥应以 "${info.keyPrefix}" 开头`;
+          }
+          return true;
+        }
       }]);
       key = answer.apiKey;
     }
@@ -57,6 +66,11 @@ providerCommand
     try {
       if (!key) {
         printError('API密钥不能为空');
+        return;
+      }
+      // 验证 key 前缀
+      if (info.keyPrefix && !key.startsWith(info.keyPrefix)) {
+        printError(`API密钥格式错误: 应以 "${info.keyPrefix}" 开头`);
         return;
       }
       await configManager.setApiKey(type, key);
@@ -224,4 +238,57 @@ providerCommand
     }
 
     console.log();
+  });
+
+// 根据API密钥自动检测平台
+providerCommand
+  .command('detect-key')
+  .description('根据API密钥自动检测平台')
+  .argument('<apiKey>', 'API密钥')
+  .action(async (apiKey: string) => {
+    await configManager.init();
+    
+    // 根据前缀检测平台
+    const detected: { provider: ProviderType; confidence: number }[] = [];
+    
+    if (apiKey.startsWith('sk-ant-')) {
+      detected.push({ provider: 'anthropic', confidence: 100 });
+    } else if (apiKey.startsWith('sk-')) {
+      // 多个平台使用 sk- 前缀，需要进一步检测
+      detected.push({ provider: 'openai', confidence: 40 });
+      detected.push({ provider: 'aliyun', confidence: 40 });
+      detected.push({ provider: 'deepseek', confidence: 40 });
+      detected.push({ provider: 'siliconflow', confidence: 40 });
+    }
+    
+    if (apiKey.startsWith('AI')) {
+      detected.push({ provider: 'google', confidence: 80 });
+    }
+    
+    if (detected.length === 0) {
+      printInfo('无法识别API密钥格式，请手动指定平台');
+      console.log(chalk.gray('用法: devflow config set-key <平台> <apiKey>'));
+      return;
+    }
+    
+    printHeader();
+    printSection('检测结果');
+    for (const { provider, confidence } of detected) {
+      const info = PROVIDER_INFO[provider];
+      console.log(`  ${confidence === 100 ? '✓' : '?'} ${info.displayName} (${provider}) - 置信度: ${confidence}%`);
+    }
+    
+    if (detected.length === 1 && detected[0].confidence === 100) {
+      const { confirm } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirm',
+        message: `是否设置为 ${PROVIDER_INFO[detected[0].provider].displayName} 的API密钥?`,
+        default: true
+      }]);
+      
+      if (confirm) {
+        await configManager.setApiKey(detected[0].provider, apiKey);
+        printSuccess(`${PROVIDER_INFO[detected[0].provider].displayName} API密钥设置成功！`);
+      }
+    }
   });

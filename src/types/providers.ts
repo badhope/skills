@@ -74,6 +74,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
   requiresApiKey: boolean;
   freeTier: boolean;
   models: ModelInfo[];
+  keyPrefix?: string;  // API Key 前缀提示
 }> = {
   openai: {
     name: 'openai',
@@ -82,6 +83,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://api.openai.com/v1',
     requiresApiKey: true,
     freeTier: false,
+    keyPrefix: 'sk-',  // OpenAI keys start with sk-
     models: [
       {
         id: 'gpt-4o',
@@ -128,6 +130,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://api.anthropic.com',
     requiresApiKey: true,
     freeTier: false,
+    keyPrefix: 'sk-ant-',  // Anthropic keys start with sk-ant-
     models: [
       {
         id: 'claude-sonnet-4-20250514',
@@ -156,6 +159,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     requiresApiKey: true,
     freeTier: true,
+    keyPrefix: 'AI',  // Google API keys start with AI
     models: [
       {
         id: 'gemini-3-flash-preview',
@@ -193,6 +197,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://api.siliconflow.cn/v1',
     requiresApiKey: true,
     freeTier: true,
+    keyPrefix: 'sk-',  // 硅基流动 keys start with sk-
     models: [
       {
         id: 'deepseek-ai/DeepSeek-R1',
@@ -248,6 +253,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     requiresApiKey: true,
     freeTier: true,
+    keyPrefix: 'sk-',  // 阿里云百炼 keys start with sk-
     models: [
       // Qwen3.6 系列 (最新)
       {
@@ -458,6 +464,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     requiresApiKey: true,
     freeTier: true,
+    keyPrefix: undefined,  // 智谱没有特定前缀
     models: [
       {
         id: 'glm-5.1',
@@ -495,6 +502,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop',
     requiresApiKey: true,
     freeTier: true,
+    keyPrefix: undefined,  // 百度使用不同的格式
     models: [
       {
         id: 'ernie-5.1-preview',
@@ -523,6 +531,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'https://api.deepseek.com/v1',
     requiresApiKey: true,
     freeTier: false,
+    keyPrefix: 'sk-',  // DeepSeek keys start with sk-
     models: [
       {
         id: 'deepseek-reasoner',
@@ -551,6 +560,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'http://127.0.0.1:11434',
     requiresApiKey: false,
     freeTier: true,
+    keyPrefix: undefined,  // 本地无需key
     models: [
       {
         id: 'deepseek-r1:14b',
@@ -588,6 +598,7 @@ export const PROVIDER_INFO: Record<ProviderType, {
     baseUrl: 'http://127.0.0.1:1234/v1',
     requiresApiKey: false,
     freeTier: true,
+    keyPrefix: undefined,  // 本地无需key
     models: [
       {
         id: 'loaded-model',
