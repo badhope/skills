@@ -38,3 +38,31 @@ yarn-error.log*
 # Temporary
 tmp/
 temp/
+
+# Source
+src/
+tsconfig.json
+.eslintrc.cjs
+jest.config.js
+vitest.config.ts
+
+# DevFlow data
+.devflow/
+
+# SDK
+sdk/
+
+# Packages
+packages/
+
+# Config backups
+config_backup*.json
+
+# Tests
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Docs
+CONTRIBUTING.md
+README_zh.md

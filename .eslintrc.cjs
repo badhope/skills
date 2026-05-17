@@ -19,6 +19,8 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-empty-catch': 'warn',
+    'no-constant-condition': ['error', { checkLoops: false }],
   },
-  ignorePatterns: ['dist/', 'node_modules/', 'coverage/', '**/*.js'],
+  ignorePatterns: ['dist/', 'node_modules/', 'coverage/', '**/*.js', 'sdk/'],
 };

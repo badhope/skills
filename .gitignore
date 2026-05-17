@@ -3,10 +3,9 @@ DELETE
 DELETE.*
 .devflow/
 config_backup.json
+config_backup*.json
 *.key
 *.pem
-
-# Thesis Specialist - .gitignore
 
 # Python
 __pycache__/
@@ -70,3 +69,16 @@ htmlcov/
 *.swp
 node_modules/
 dist/
+
+# DevFlow runtime data
+.devflow/
+
+# Config backups
+config_backup.json
+config_backup*.json
+
+# SDK build output
+sdk/dist/
+
+# Packages (local)
+packages/
