@@ -23,8 +23,7 @@ import { printHeader, printSuccess, printError, printInfo, printWarning } from '
 import { showMainMenu } from './ui/menu.js';
 import { handleMenuChoice } from './ui/menu-handler.js';
 import { logger } from './services/logger.js';
-import { generateStartupSuggestions, formatHealthCheckForCLI } from './agent/startup-suggestions.js';
-import { autonomousGoalManager } from './agent/autonomous-goals.js';
+import { generateStartupSuggestions } from './agent/startup-suggestions.js';
 import { getErrorMessage } from './utils/error-handling.js';
 
 // 注册 DI 容器服务（可选，用于未来的依赖注入迁移）
@@ -221,11 +220,13 @@ if (process.argv.length === 2) {
       process.exit(1);
     }
 
-    while (true) {
+    let running = true;
+    while (running) {
       try {
         const choice = await showMainMenu();
 
         if (choice === null || choice === 'exit') {
+          running = false;
           printHeader();
           printSuccess('感谢使用 DevFlow Agent，再见！');
           logger.info('DevFlow Agent exited normally');

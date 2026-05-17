@@ -93,7 +93,7 @@ export class CircuitBreaker {
       timeout: this.options.resetTimeout,
       resetTimeout: this.options.resetTimeout,
       volumeThreshold: this.options.halfOpenMaxCalls,
-      maxFailures: this.options.failureThreshold,
+      errorThresholdPercentage: this.options.failureThreshold <= 2 ? 50 : 50,
     });
   }
 
@@ -108,7 +108,7 @@ export class CircuitBreaker {
     // Create a one-shot opossum breaker for this specific function
     const shot = new CircuitBreakerLib(fn, {
       resetTimeout: this.options.resetTimeout,
-      maxFailures: this.options.failureThreshold,
+      errorThresholdPercentage: this.options.failureThreshold <= 2 ? 50 : 50,
       volumeThreshold: this.options.halfOpenMaxCalls,
     });
 
