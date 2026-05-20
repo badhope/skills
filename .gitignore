@@ -82,3 +82,8 @@ sdk/dist/
 
 # Packages (local)
 packages/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
